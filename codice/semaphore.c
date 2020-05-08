@@ -4,3 +4,19 @@
 
 #include "err_exit.h"
 #include "semaphore.h"
+
+#include <unistd.h>
+
+int create_semaphore(int num) {
+	int sem = semget(IPC_PRIVATE, num, S_IRUSR | S_IWUSR);
+	if (sem == -1)
+		panic("%d | Errore creazione semaforo", getpid());
+
+	return sem;	
+}
+
+void sem_op(int sem, int num, int op) {
+	struct sembuf arg = { num, op, 0 };
+	if (semop(sem, &arg, 1) == -1)
+		panic("%d | Errore operazione semaforo", getpid());
+}
