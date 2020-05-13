@@ -10,7 +10,7 @@
 int create_semaphore(int num) {
 	int sem = semget(IPC_PRIVATE, num, S_IRUSR | S_IWUSR);
 	if (sem == -1)
-		panic("%d | Errore creazione semaforo", getpid());
+		ErrExit("Errore creazione semaforo");
 
 	return sem;	
 }
@@ -18,5 +18,5 @@ int create_semaphore(int num) {
 void sem_op(int sem, int num, int op) {
 	struct sembuf arg = { num, op, 0 };
 	if (semop(sem, &arg, 1) == -1)
-		panic("%d | Errore operazione semaforo", getpid());
+		ErrExit("Errore operazione semaforo");
 }

@@ -14,6 +14,6 @@ void create_fifo(char* filename)
 	mode_t flags = S_IRUSR | S_IWUSR;
 	int fifo = mkfifo(filename, flags);
 	if (fifo == -1) {
-		panic("%d | Errore creazione fifo '%s'", getpid(), filename);
+		ErrExit("Errore creazione fifo");
 	}
 }

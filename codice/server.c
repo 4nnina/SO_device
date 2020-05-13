@@ -14,6 +14,7 @@
 #include "defines.h"
 #include "shared_memory.h"
 #include "semaphore.h"
+#include "log.h"
 #include "fifo.h"
 
 #define DEV_COUNT 5
@@ -33,34 +34,34 @@ int  device_fifo_read_fd;
 
 void device_callback_sigterm(int sigterm) {
 
-	printf("%d (device) si sta chiudendo\n", getpid());
+	log_info(LOG_WRITER_DEVICE, "Chiusura fifo in lettura");
 	if (close(device_fifo_read_fd) == -1) {
-		panic("%d | Errore chiusura fifo device lettura: %d", getpid(), errno);	
+		panic(LOG_WRITER_DEVICE, "Errore chiusura fifo device lettura");	
 	}
 
-	
-
+	log_info(LOG_WRITER_DEVICE, "Eliminazione fifo");
 	unlink(device_filename);
+	
+	log_warn(LOG_WRITER_DEVICE, "Terminazione device");
 	exit(0);
 }
 
 // ENTRY POINT
 int device(int number)
 {
-	pid_t pid = getpid();
-	printf("Child n. %d => - %d -\n", number, pid);
+	log_info(LOG_WRITER_DEVICE, "Figlio n. %d", number);
 	
 	if (signal(SIGTERM, device_callback_sigterm) == SIG_ERR)
-		panic("%d | Errore creazione signal handler", getpid());
+		panic(LOG_WRITER_DEVICE, "Errore creazione signal handler");
 
-	sprintf(device_filename, "/tmp/dev_fifo.%d", pid);	
-	printf("%d | Creazione fifo a '%s'\n", pid, device_filename);
+	sprintf(device_filename, "/tmp/dev_fifo.%d", getpid());
+	log_info(LOG_WRITER_DEVICE, "Creazione fifo %s", device_filename);
 	create_fifo(device_filename);
 	
-	printf ("%d | Apertura fifo in lettura\n", pid);
+	log_info(LOG_WRITER_DEVICE, "Apertura fifo %s in lettura", device_filename);
 	device_fifo_read_fd = open(device_filename, O_RDONLY);
 	if (device_fifo_read_fd == -1)
-		panic("%d | Errore apertura fifo '%s' in lettura", pid, device_filename);
+		panic(LOG_WRITER_DEVICE, "Errore apertura fifo '%s' in lettura", device_filename);
 	
 	// Rendi non bloccante
 	int flags = fcntl(device_fifo_read_fd, F_GETFL, 0);
@@ -69,7 +70,6 @@ int device(int number)
 	// Messaggi ancora da inviare
 	message_t msg_to_send[DEV_MSG_COUNT];
 	int msg_count = 0;	
-
 
 	// TODO: Semafori
 	while(1) {
@@ -86,15 +86,13 @@ int device(int number)
 		message_t message;
 		while (valid && msg_count != DEV_MSG_COUNT)
 		{
-			int bytes_read = read(device_fifo_read_fd, &message, sizeof(message));
+			size_t bytes_read = read(device_fifo_read_fd, &message, sizeof(message));
 			switch (bytes_read)
 			{
 				// Messaggio valido
 				case sizeof(message): {
 					
-					printf("%d ha ricevuto un messaggio (%d)\n", 
-							pid, message.pid_sender);
-
+					log_info(LOG_WRITER_DEVICE, "Ricevuto un messaggio: %d", message.pid_sender);
 					msg_to_send[msg_count] = message;
 					msg_count += 1;
 
@@ -102,7 +100,7 @@ int device(int number)
 
 				// Non ci sono più messaggi
 				case 0:
-					printf("%d non ci sono più messaggi\n", pid);
+					log_info(LOG_WRITER_DEVICE, "Non ci sono più messaggi");
 					valid = 0;
 					break;
 
@@ -110,11 +108,11 @@ int device(int number)
 					if (errno == EAGAIN)
 					   valid = 0;
 					else
-						panic("%d | Errore non definito", pid);	
+						panic(LOG_WRITER_DEVICE, "Errore non definito");	
 				} break;
 
 				default:
-					panic("%d | Il messaggio è corrotto", pid);
+					panic(LOG_WRITER_DEVICE, "Il messaggio è corrotto");
 					break;
 			} 
 		}
@@ -153,13 +151,12 @@ int devices_fifo_fd[DEV_COUNT];
 // Uccide tutto
 void server_callback_sigterm(int sigterm) {
 
-	printf("Server si sta chiudendo\n");
-
+	log_info(LOG_WRITER_SERVER, "Invio sengnale di terminazione ai devices");
 	for (int child = 0; child < DEV_COUNT; ++child) {
 
 		// Chiude fifo in lettura del device
 		if (devices_fifo_fd[child] != 0 && close(devices_fifo_fd[child]) == -1) {
-			panic("%d | Errore chiusura fifo device extra scrittura", getpid());
+			panic(LOG_WRITER_SERVER, "Errore chiusura fifo device extra scrittura");
 		}
 		
 		kill(devices_pid[child], SIGTERM);
@@ -171,6 +168,8 @@ void server_callback_sigterm(int sigterm) {
 
 	// ELIMINA SEMAFORO	
 
+	log_warn(LOG_WRITER_SERVER, "Terminazione server");
+	log_erro(LOG_WRITER_SERVER, "Questo non è un vero errore, ma un esempio per far prendere paura");
 	exit(0);
 }
 
@@ -186,6 +185,8 @@ void server_callback_move(int sigalrm) {
 
 int main(int argc, char * argv[]) {
 
+	log_set_levels_mask(LOG_LEVEL_INFO_BIT | LOG_LEVEL_WARN_BIT | LOG_LEVEL_ERROR_BIT);
+
 	// Blocca tutti i segnali tranne SIGTERM
 	sigset_t signals;
 	sigfillset(&signals);
@@ -195,10 +196,11 @@ int main(int argc, char * argv[]) {
 
 	if (signal(SIGTERM, server_callback_sigterm) == SIG_ERR || 
 		signal(SIGALRM, server_callback_move) == SIG_ERR)
-		panic("%d | Errore creazione signal handlers", getpid());
+		panic(LOG_WRITER_SERVER, "Errore creazione signal handlers");
 
 	// Crea semaforo per movimento devices
 
+	log_info(LOG_WRITER_SERVER, "Creazione semaforo movimento dei device");
 	devices_move_sem = create_semaphore(DEV_COUNT);
     unsigned short sem_init_val[DEV_COUNT];
 	memset(sem_init_val, 0, DEV_COUNT * sizeof(*sem_init_val));
@@ -206,18 +208,19 @@ int main(int argc, char * argv[]) {
     union semun arg;
     arg.array = sem_init_val;
     if (semctl(devices_move_sem, 0, SETALL, arg) == -1)
-        panic("%d | Errore creazione semaforo", getpid());
+        panic(LOG_WRITER_SERVER, "Errore creazione semaforo");
 
 	// 
 
 	alarm(2);
 
+	log_info(LOG_WRITER_SERVER, "Creazione processo Ack Manager");
 	pid_t ack_manager_pid = fork();
 	switch(ack_manager_pid)
 	{
 		// ERRORE
 		case -1: {
-			panic("%d | Errore creazione ACK Manager", getpid());
+			panic(LOG_WRITER_SERVER, "Errore creazione ACK Manager");
 		} break;
 
 		// Ack manager
@@ -227,6 +230,7 @@ int main(int argc, char * argv[]) {
 	}
 	
 	// Apri ogni fifo dei devices per tenerli in vita
+	log_info(LOG_WRITER_SERVER, "Creazioni processi devices");
 	for (int child = 0; child < DEV_COUNT; ++child)
 	{
 		pid_t child_pid = fork();	
@@ -234,7 +238,7 @@ int main(int argc, char * argv[]) {
 		{
 			// ERRORE
 			case -1: {
-				panic("%d | Errore creazione figlio n. %d", getpid(), child);
+				panic(LOG_WRITER_SERVER, "Errore creazione figlio n. %d", child);
 			} break;
 
 			// Device
@@ -249,15 +253,15 @@ int main(int argc, char * argv[]) {
 
 		// TODO: Questo fa schifo
 		while ((devices_fifo_fd[child] = open(device_filename, O_WRONLY)) == -1);
-		if (devices_fifo_fd[child] == -1)
-			panic("%d | Errore apertura fifo '%s' in scrittura", getpid(), device_filename);
+		if (devices_fifo_fd[child] == -1) // NOTE: INUTILE
+			panic(LOG_WRITER_SERVER, "Errore apertura fifo '%s' in scrittura", device_filename);
 
 	}
 
 	int child_exit_status;
 	while(waitpid(-1, &child_exit_status, WUNTRACED) != -1) { }
 	if (errno != ECHILD) {
-		panic("%d | Errore non definito", getpid());
+		panic(LOG_WRITER_SERVER, "Errore non definito");
 	}
 
 	return 0;
