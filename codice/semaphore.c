@@ -15,6 +15,11 @@ int create_semaphore(int num) {
 	return sem;	
 }
 
+void close_semaphore(int sem) {
+	if (semctl(sem, 0, IPC_RMID, NULL) == -1)
+		ErrExit("Errore chiusura semaforo");
+}
+
 void sem_op(int sem, int num, int op) {
 	struct sembuf arg = { num, op, 0 };
 	if (semop(sem, &arg, 1) == -1)

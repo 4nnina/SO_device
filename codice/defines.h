@@ -8,7 +8,13 @@
 #include <sys/types.h>
 #include <fcntl.h>
 
+#define FIFO_READ  0
+#define FIFO_WRITE 1
+
 #define MESSAGE_LEN 256
+
+#define CHECKBOARD_SIDE 10
+#define ACK_LIST_MAX_COUNT (64 * 5)
 
 typedef struct message_t {
 	

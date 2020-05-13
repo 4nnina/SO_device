@@ -14,6 +14,8 @@ union semun {
 };
 
 int create_semaphore(int num);
+void close_semaphore(int sem);
+
 void sem_op(int sem, int num, int op);
 
 #define sem_wait(sem, num) \

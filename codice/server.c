@@ -16,127 +16,10 @@
 #include "semaphore.h"
 #include "log.h"
 #include "fifo.h"
-
-#define DEV_COUNT 5
-#define DEV_MSG_COUNT 32
+#include "device.h"
 
 extern int errno;
 
-#define FIFO_READ  0
-#define FIFO_WRITE 1
-
-// Server
-pid_t devices_pid[DEV_COUNT];
-
-int  devices_move_sem;
-char device_filename[126];
-int  device_fifo_read_fd;
-
-void device_callback_sigterm(int sigterm) {
-
-	log_info(LOG_WRITER_DEVICE, "Chiusura fifo in lettura");
-	if (close(device_fifo_read_fd) == -1) {
-		panic(LOG_WRITER_DEVICE, "Errore chiusura fifo device lettura");	
-	}
-
-	log_info(LOG_WRITER_DEVICE, "Eliminazione fifo");
-	unlink(device_filename);
-	
-	log_warn(LOG_WRITER_DEVICE, "Terminazione device");
-	exit(0);
-}
-
-// ENTRY POINT
-int device(int number)
-{
-	log_info(LOG_WRITER_DEVICE, "Figlio n. %d", number);
-	
-	if (signal(SIGTERM, device_callback_sigterm) == SIG_ERR)
-		panic(LOG_WRITER_DEVICE, "Errore creazione signal handler");
-
-	sprintf(device_filename, "/tmp/dev_fifo.%d", getpid());
-	log_info(LOG_WRITER_DEVICE, "Creazione fifo %s", device_filename);
-	create_fifo(device_filename);
-	
-	log_info(LOG_WRITER_DEVICE, "Apertura fifo %s in lettura", device_filename);
-	device_fifo_read_fd = open(device_filename, O_RDONLY);
-	if (device_fifo_read_fd == -1)
-		panic(LOG_WRITER_DEVICE, "Errore apertura fifo '%s' in lettura", device_filename);
-	
-	// Rendi non bloccante
-	int flags = fcntl(device_fifo_read_fd, F_GETFL, 0);
-	fcntl(device_fifo_read_fd, F_SETFL, flags | O_NONBLOCK);
-
-	// Messaggi ancora da inviare
-	message_t msg_to_send[DEV_MSG_COUNT];
-	int msg_count = 0;	
-
-	// TODO: Semafori
-	while(1) {
-
-		// PRENDI SEMAFORO SCACCHIERA
-		// INVIO MESSAGGI
-		// LASCIA SEMAFORO SCACCHIERA
-
-		msg_count = 0;
-
-		// LEGGI MESSAGGI
-
-		int valid = 1;
-		message_t message;
-		while (valid && msg_count != DEV_MSG_COUNT)
-		{
-			size_t bytes_read = read(device_fifo_read_fd, &message, sizeof(message));
-			switch (bytes_read)
-			{
-				// Messaggio valido
-				case sizeof(message): {
-					
-					log_info(LOG_WRITER_DEVICE, "Ricevuto un messaggio: %d", message.pid_sender);
-					msg_to_send[msg_count] = message;
-					msg_count += 1;
-
-				} break;
-
-				// Non ci sono più messaggi
-				case 0:
-					log_info(LOG_WRITER_DEVICE, "Non ci sono più messaggi");
-					valid = 0;
-					break;
-
-				case -1: {
-					if (errno == EAGAIN)
-					   valid = 0;
-					else
-						panic(LOG_WRITER_DEVICE, "Errore non definito");	
-				} break;
-
-				default:
-					panic(LOG_WRITER_DEVICE, "Il messaggio è corrotto");
-					break;
-			} 
-		}
-
-		// PRENDI SEMAFORO SCACCHIERA
-		//printf("%d | Aspetta semaforo\n", pid);
-
-		// PRENDI SEMAFORO TURNO TUO
-		sem_wait(devices_move_sem, number);
-		
-
-		//printf("Il device n. %d si è mosso\n", number);
-		// MOVIMENTO
-		
-		// LIBERA SEMAFORO TURNO ALTRO
-		if (number != DEV_COUNT - 1)
-			sem_signal(devices_move_sem, number + 1);
-
-		// LASCIA SEMAFORO SCACCHIERA
-
-	}
-
-	return 0;
-}
 
 // ENTRY POINT
 int ack_manager()
@@ -146,7 +29,15 @@ int ack_manager()
 
 // ======================================================================
 
+// Dati globali del server
+pid_t devices_pid[DEV_COUNT];
 int devices_fifo_fd[DEV_COUNT];
+int position_file_fd;
+
+int devices_move_sem;
+int checkboard_sem;
+
+pid_t* checkboard_shmem;
 
 // Uccide tutto
 void server_callback_sigterm(int sigterm) {
@@ -164,21 +55,32 @@ void server_callback_sigterm(int sigterm) {
 
 	// TODO ack manager
 
+	int child_exit_status;
+	while(waitpid(-1, &child_exit_status, WUNTRACED) != -1) { }
+	if (errno != ECHILD) {
+		panic(LOG_WRITER_SERVER, "Errore non definito");
+	}
 
+	log_info(LOG_WRITER_SERVER, "Chiusura semaforo movimento");
+	close_semaphore(devices_move_sem);
 
-	// ELIMINA SEMAFORO	
+	log_info(LOG_WRITER_SERVER, "Chiusura file posizioni");
+	if (close(position_file_fd) == -1)
+		panic(LOG_WRITER_SERVER, "Errore chiusura file posizioni");
 
 	log_warn(LOG_WRITER_SERVER, "Terminazione server");
-	log_erro(LOG_WRITER_SERVER, "Questo non è un vero errore, ma un esempio per far prendere paura");
 	exit(0);
 }
 
-
-
-// Avvia il movimento dei device (2s)
+// Avvia il movimento dei device (2s) e printa
 void server_callback_move(int sigalrm) {
 
-	//printf("Avvio movimento (2s)\n");	
+	// Printa su schermo
+	int x,y;
+	for(int device = 0; device < DEV_COUNT; ++device ) {
+		printf("%d\n", devices_pid[device]);
+	}
+
 	sem_signal(devices_move_sem, 0);	
 	alarm(2);
 }
@@ -198,11 +100,32 @@ int main(int argc, char * argv[]) {
 		signal(SIGALRM, server_callback_move) == SIG_ERR)
 		panic(LOG_WRITER_SERVER, "Errore creazione signal handlers");
 
+	// Aprire file posizioni
+	log_info(LOG_WRITER_SERVER, "Apretura file posizioni");
+	position_file_fd = open("input/file_posizioni.txt", O_RDONLY, S_IRUSR);
+	if (position_file_fd == -1)
+		panic(LOG_WRITER_SERVER, "Errore apertura file posizioni");
+
+	// Crea memorie condivise
+
+	log_info(LOG_WRITER_SERVER, "Creazione e attach della memoria condivisa per la scacchiera");
+	const size_t checkboard_size = sizeof(pid_t) * CHECKBOARD_SIDE * CHECKBOARD_SIDE;
+	int checkboard_shmem_id = create_shared_memory(checkboard_size);
+	checkboard_shmem = (pid_t*)shmat(checkboard_shmem_id, NULL, 0);
+	memset(checkboard_shmem, 0, checkboard_size);
+
+	log_info(LOG_WRITER_SERVER, "Creazione e attach della memoria condivisa per la lista degli ack");
+	const size_t ack_list_size = sizeof(ack_t) * ACK_LIST_MAX_COUNT;
+	int ack_list_shmem_id = create_shared_memory(ack_list_size);
+	ack_t*  ack_list_shmen = (ack_t*)shmat(ack_list_shmem_id, NULL, 0);
+	memset(ack_list_shmen, 0, ack_list_size);
+
 	// Crea semaforo per movimento devices
 
 	log_info(LOG_WRITER_SERVER, "Creazione semaforo movimento dei device");
 	devices_move_sem = create_semaphore(DEV_COUNT);
-    unsigned short sem_init_val[DEV_COUNT];
+	// NOTA: Il primo è a uno per permettere la prima inizializzazione dei device sulla scacchiera
+    unsigned short sem_init_val[DEV_COUNT] = { 1, 0, 0, 0, 0 };
 	memset(sem_init_val, 0, DEV_COUNT * sizeof(*sem_init_val));
 
     union semun arg;
@@ -210,8 +133,27 @@ int main(int argc, char * argv[]) {
     if (semctl(devices_move_sem, 0, SETALL, arg) == -1)
         panic(LOG_WRITER_SERVER, "Errore creazione semaforo");
 
-	// 
+	// Crea semaforo per scacchiera
 
+	log_info(LOG_WRITER_SERVER, "Creazione mutex scacchiera");
+	checkboard_sem = create_semaphore(1);
+	sem_init_val[0] = 1;
+	
+    arg.array = sem_init_val;
+    if (semctl(checkboard_sem, 0, SETALL, arg) == -1)
+        panic(LOG_WRITER_SERVER, "Errore creazione mutex scacchiera");
+
+	// Crea semaforo ack list
+	log_info(LOG_WRITER_SERVER, "Creazione mutex ack list");
+	int ack_list_sem = create_semaphore(1);
+	sem_init_val[0] = 1;
+
+    arg.array = sem_init_val;
+    if (semctl(ack_list_sem, 0, SETALL, arg) == -1)
+        panic(LOG_WRITER_SERVER, "Errore creazione mutex ack list");
+
+
+	// Timer
 	alarm(2);
 
 	log_info(LOG_WRITER_SERVER, "Creazione processo Ack Manager");
@@ -229,11 +171,20 @@ int main(int argc, char * argv[]) {
 		} break; 
 	}
 	
+	// Handles dati al device
+	device_data_t dev_data = {0};
+	dev_data.move_sem = devices_move_sem;
+	dev_data.position_file_fd = position_file_fd;
+	dev_data.checkboard_shme_id = checkboard_shmem_id;
+	dev_data.ack_list_shmem_id = ack_list_shmem_id;
+	dev_data.checkboard_sem = checkboard_sem;
+	dev_data.ack_list_sem = ack_list_sem;
+
 	// Apri ogni fifo dei devices per tenerli in vita
 	log_info(LOG_WRITER_SERVER, "Creazioni processi devices");
 	for (int child = 0; child < DEV_COUNT; ++child)
 	{
-		pid_t child_pid = fork();	
+		pid_t child_pid = fork();
 		switch (child_pid)
 		{
 			// ERRORE
@@ -243,19 +194,9 @@ int main(int argc, char * argv[]) {
 
 			// Device
 			case 0: {
-				devices_pid[child] = child_pid;
-				return device(child);
+				return device(child, dev_data);
 			} break;
 		}
- 
-		char device_filename[126];
-		sprintf(device_filename, "/tmp/dev_fifo.%d", child_pid);
-
-		// TODO: Questo fa schifo
-		while ((devices_fifo_fd[child] = open(device_filename, O_WRONLY)) == -1);
-		if (devices_fifo_fd[child] == -1) // NOTE: INUTILE
-			panic(LOG_WRITER_SERVER, "Errore apertura fifo '%s' in scrittura", device_filename);
-
 	}
 
 	int child_exit_status;
@@ -264,5 +205,5 @@ int main(int argc, char * argv[]) {
 		panic(LOG_WRITER_SERVER, "Errore non definito");
 	}
 
-	return 0;
+	return 0; 
 }
