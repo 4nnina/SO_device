@@ -39,6 +39,7 @@ static int checkboard_sem;
 static int ack_list_sem;
 
 static pid_t* checkboard_shmem;
+static ack_t*  ack_list_shmen;
 
 // Uccide tutto
 void server_callback_sigterm(int sigterm) {
@@ -83,18 +84,16 @@ void server_callback_sigterm(int sigterm) {
 void server_callback_move(int sigalrm) {
 
 	// Printa su schermo
-	/*
-	mutex_lock(checkboard_sem);
-	for(int x = 0; x < CHECKBOARD_SIDE; ++x) {
-		for(int y = 0; y < CHECKBOARD_SIDE; ++y) {
-			printf("| %5d", checkboard_shmem[x + y * CHECKBOARD_SIDE]);
-		}
-		putchar('|\n');
+	log_warn(" =================== LISTA ACK =================== ");
+	mutex_lock(ack_list_sem);
+	for(int i = 0; i < 10; ++i)
+	{
+		ack_t* ack = ack_list_shmen + i;
+		printf("\tACK: sender: %d, receiver: %d, id: %d\n", ack->pid_sender, ack->pid_receiver, ack->message_id);
 	}
-	mutex_unlock(checkboard_sem);
-	*/
+	mutex_unlock(ack_list_sem);
 
-	log_info(" ===================== CICLO ========================= ");
+	//log_info(" ===================== CICLO ========================= ");
 	sem_release(move_sem, 0);
 
 	alarm(2);
@@ -118,7 +117,7 @@ int main(int argc, char * argv[]) {
 
 	// Aprire file posizioni
 	log_info("Apretura file posizioni");
-	position_file_fd = open("input/file_posizioni.txt", O_RDONLY, S_IRUSR);
+	position_file_fd = open("input/file_posizioni2.txt", O_RDONLY, S_IRUSR);
 	if (position_file_fd == -1)
 		panic("Errore apertura file posizioni");
 
@@ -133,7 +132,7 @@ int main(int argc, char * argv[]) {
 	log_info("Creazione e attach della memoria condivisa per la lista degli ack");
 	const size_t ack_list_size = sizeof(ack_t) * ACK_LIST_MAX_COUNT;
 	int ack_list_shmem_id = shared_memory_create(ack_list_size);
-	ack_t*  ack_list_shmen = shared_memory_attach(ack_list_shmem_id, 0, pid_t);
+	ack_list_shmen = shared_memory_attach(ack_list_shmem_id, 0, pid_t);
 	memset(ack_list_shmen, 0, ack_list_size);
 
 	// Crea semaforo per scacchiera

@@ -1,10 +1,10 @@
 #include "device.h"
-#include "defines.h"
 #include "log.h"
 #include "err_exit.h"
 #include "semaphore.h"
 #include "fifo.h"
 #include "shared_memory.h"
+#include "defines.h"
 
 #include <unistd.h>
 #include <sys/signal.h>
@@ -13,6 +13,24 @@
 // Dati globali dei devices
 static char device_filename[128];
 static int  device_fifo_read_fd;
+
+message_t* get_new_message(message_t* messages) {
+	for(int i = 0; i < DEV_MSG_COUNT; ++i)
+		if (messages->message_id == 0)
+			return messages + i;
+	return NULL;
+}
+
+void remove_message(message_t* message) {
+	message->message_id = 0;
+}
+
+int can_get_message(message_t* messages) {
+	for(int i = 0; i < DEV_MSG_COUNT; ++i)
+		if (messages[i].message_id == 0)
+			return 1;
+	return 0;
+}
 
 /**
  *  Rimuove risorse aperte dal device
@@ -93,17 +111,21 @@ int device(int number, device_data_t data)
 	// Attach checkboard e ack list
 	log_info("Collegamento memoria condivisa del server");
 	pid_t* checkboard = shared_memory_attach(data.checkboard_shme_id, 0, pid_t);
-	//ack_t* ack_list = (ack_t*)shmat(data.ack_list_shmem_id, NULL, 0);
+	ack_t* ack_list = shared_memory_attach(data.ack_list_shmem_id, 0, ack_t);
 
 	// Messaggi ancora da inviare
 	message_t msg_to_send[DEV_MSG_COUNT];
-	int msg_count = 0;
+	for (int i = 0; i < DEV_MSG_COUNT; ++i)
+		msg_to_send[i].message_id = 0;
 
 	int cur_x = -1, cur_y = -1;
 	while(1) 
 	{
 		// Nota: Questo pezzo di codice funge sia da inizializzazione che da movimento nei prossimi
 		// passi del ciclo
+
+		// ===============================================================================
+		// INIZIALIZZAZIONE POSIZIONE E MOVIMENTO
 
 		sem_acquire(data.move_sem, number);
 
@@ -119,16 +141,16 @@ int device(int number, device_data_t data)
 				checkboard[new_x + CHECKBOARD_SIDE * new_y] = getpid();	
 				initialized = 1;
 
-				log_info("Device n. %d è in posizione (%d, %d) all'inizio",
-					number, new_x, new_y);
+				//log_info("Device n. %d è in posizione (%d, %d) all'inizio",
+				//	number, new_x, new_y);
 			}
 			else
 			{
 				checkboard[cur_x + CHECKBOARD_SIDE * cur_y] = 0;
 				checkboard[new_x + CHECKBOARD_SIDE * new_y] = getpid();
 
-				log_info("Device n. %d si è spostato da (%d, %d) a (%d, %d)", 
-					number, cur_x, cur_y, new_x, new_y);	
+				//log_info("Device n. %d si è spostato da (%d, %d) a (%d, %d)", 
+				//	number, cur_x, cur_y, new_x, new_y);	
 			}
 		}
 		mutex_unlock(data.checkboard_sem);
@@ -142,26 +164,86 @@ int device(int number, device_data_t data)
 
 		// INIZIO CICLO DEVICE
 
-		// sem_wait(data.checkboard_sem, 0);
+		// ===============================================================================
 		// INVIO MESSAGGI
-		// sem_signal(data.checkboard_sem, 0);
 
-		msg_count = 0;
+		// Prova ad inviare ogni messaggio
+		for(int i = 0; i < DEV_MSG_COUNT; ++i) 
+		{
+			message_t* msg = msg_to_send + i;
+			if (msg->message_id != 0) // Se valido
+			{
+				log_info("Analisi messaggio (id: %d)", msg->message_id);
+				
+				int radius = (int)msg->max_distance; // NOTA: Consideriamo regioni quadrate
+				int found = 0;
+
+				mutex_lock(data.checkboard_sem);
+				for (int x = MAX(0, cur_x - radius); x < MIN(9, cur_x + radius) && !found; ++x) {
+					for (int y = MAX(0, cur_y - radius); y < MIN(9, cur_y + radius) && !found; ++y) 
+					{
+						pid_t pid = checkboard[x + y * CHECKBOARD_SIDE]; 
+						if (pid != 0 && pid != getpid()) 
+						{
+							// Controlliamo se questo device ha già ricevuto il messaggio
+							mutex_lock(data.ack_list_sem);
+							int send = !ack_list_exists(ack_list, msg->message_id, pid);
+							mutex_unlock(data.ack_list_sem);
+
+							if (send)
+							{
+								log_info("Invio del messaggio da %d a %d con ID = %d", getpid(), pid, msg->message_id);
+
+								message_t output = *msg;
+								output.pid_sender = getpid();
+								output.pid_receiver = pid;
+
+								// Inviamo messaggio la device
+								char filename[128];
+								sprintf(filename, "/tmp/dev_fifo.%d", pid);
+								int output_fifo = open(filename, O_WRONLY);
+								write(output_fifo, &output, sizeof(output));
+								close(output_fifo);
+
+								// Rimuove dalla coda dei messaggi
+								remove_message(msg);
+								found = 1;
+							}
+						}
+					}
+				}
+				mutex_unlock(data.checkboard_sem);
+			}
+		}
+
+		// ===============================================================================
+		// RICEZIONE MESSAGGIO
 
 		int valid = 1;
-		message_t message;
-		while (valid && msg_count != DEV_MSG_COUNT)
+		message_t tmp_message;
+		while (valid && can_get_message(msg_to_send))
 		{
-			size_t bytes_read = read(device_fifo_read_fd, &message, sizeof(message));
+			size_t bytes_read = read(device_fifo_read_fd, &tmp_message, sizeof(tmp_message));
 			switch (bytes_read)
 			{
 				// Messaggio valido
-				case sizeof(message): {
-					
-					log_info("Ricevuto un messaggio: %d", message.pid_sender);
-					msg_to_send[msg_count] = message;
-					msg_count += 1;
+				case sizeof(tmp_message): {
+					log_info("Ricevuto un messaggio con ID = %d", tmp_message.message_id);
 
+					mutex_lock(data.ack_list_sem);
+					
+					// Inserisci in lista degli ack
+					ack_t* slot = ack_list_get(ack_list);
+					message_to_ack(&tmp_message, slot);
+					
+					// Controlla se non abbiamo finito
+					if (!ack_list_completed(ack_list, tmp_message.message_id))
+					{
+						message_t* msg = get_new_message(msg_to_send);
+						*msg = tmp_message;
+					}
+					
+					mutex_unlock(data.ack_list_sem);
 				} break;
 
 				// Non ci sono più messaggi
