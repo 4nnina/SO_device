@@ -8,4 +8,9 @@
 #include <sys/stat.h>
 #include <sys/shm.h>
 
-int create_shared_memory(size_t bytes);
+int  shared_memory_create(size_t bytes);
+void shared_memory_remove(int shmid);
+
+void* _shared_memory_attach(int shmid, int flags);
+#define shared_memory_attach(shmid, flags, type) \
+    (type*)_shared_memory_attach(shmid, flags)

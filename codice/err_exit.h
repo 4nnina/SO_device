@@ -10,4 +10,4 @@
 ///         system call and terminates the calling process.
 void ErrExit(const char *msg);
 
-#define panic(writer, ...) { log_erro(writer, __VA_ARGS__); ErrExit(NULL); }
+#define panic(...) { log_erro(__VA_ARGS__); ErrExit(NULL); }

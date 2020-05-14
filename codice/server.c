@@ -20,7 +20,6 @@
 
 extern int errno;
 
-
 // ENTRY POINT
 int ack_manager()
 {
@@ -28,26 +27,28 @@ int ack_manager()
 }
 
 // ======================================================================
-
 // Dati globali del server
-pid_t devices_pid[DEV_COUNT];
-int devices_fifo_fd[DEV_COUNT];
-int position_file_fd;
 
-int devices_move_sem;
-int checkboard_sem;
+static pid_t devices_pid[DEV_COUNT];
+static int   devices_fifo_fd[DEV_COUNT];
 
-pid_t* checkboard_shmem;
+static int position_file_fd;
+
+static int move_sem;
+static int checkboard_sem;
+static int ack_list_sem;
+
+static pid_t* checkboard_shmem;
 
 // Uccide tutto
 void server_callback_sigterm(int sigterm) {
 
-	log_info(LOG_WRITER_SERVER, "Invio sengnale di terminazione ai devices");
+	log_info("Invio sengnale di terminazione ai devices");
 	for (int child = 0; child < DEV_COUNT; ++child) {
 
 		// Chiude fifo in lettura del device
 		if (devices_fifo_fd[child] != 0 && close(devices_fifo_fd[child]) == -1) {
-			panic(LOG_WRITER_SERVER, "Errore chiusura fifo device extra scrittura");
+			panic("Errore chiusura fifo device extra scrittura");
 		}
 		
 		kill(devices_pid[child], SIGTERM);
@@ -58,17 +59,23 @@ void server_callback_sigterm(int sigterm) {
 	int child_exit_status;
 	while(waitpid(-1, &child_exit_status, WUNTRACED) != -1) { }
 	if (errno != ECHILD) {
-		panic(LOG_WRITER_SERVER, "Errore non definito");
+		panic("Errore non definito");
 	}
 
-	log_info(LOG_WRITER_SERVER, "Chiusura semaforo movimento");
-	close_semaphore(devices_move_sem);
+	log_info("Chiusura semaforo movimento");
+	semaphore_remove(move_sem);
 
-	log_info(LOG_WRITER_SERVER, "Chiusura file posizioni");
+	log_info("Chiusura mutex scacchiera");
+	semaphore_remove(checkboard_sem);
+
+	log_info("Chiusura mutex ack list");
+	semaphore_remove(ack_list_sem);
+
+	log_info("Chiusura file posizioni");
 	if (close(position_file_fd) == -1)
-		panic(LOG_WRITER_SERVER, "Errore chiusura file posizioni");
+		panic("Errore chiusura file posizioni");
 
-	log_warn(LOG_WRITER_SERVER, "Terminazione server");
+	log_warn("Terminazione server");
 	exit(0);
 }
 
@@ -76,18 +83,27 @@ void server_callback_sigterm(int sigterm) {
 void server_callback_move(int sigalrm) {
 
 	// Printa su schermo
-	int x,y;
-	for(int device = 0; device < DEV_COUNT; ++device ) {
-		printf("%d\n", devices_pid[device]);
+	/*
+	mutex_lock(checkboard_sem);
+	for(int x = 0; x < CHECKBOARD_SIDE; ++x) {
+		for(int y = 0; y < CHECKBOARD_SIDE; ++y) {
+			printf("| %5d", checkboard_shmem[x + y * CHECKBOARD_SIDE]);
+		}
+		putchar('|\n');
 	}
+	mutex_unlock(checkboard_sem);
+	*/
 
-	sem_signal(devices_move_sem, 0);	
+	log_info(" ===================== CICLO ========================= ");
+	sem_release(move_sem, 0);
+
 	alarm(2);
 }
 
 int main(int argc, char * argv[]) {
 
 	log_set_levels_mask(LOG_LEVEL_INFO_BIT | LOG_LEVEL_WARN_BIT | LOG_LEVEL_ERROR_BIT);
+	log_set_proc_writer(LOG_WRITER_SERVER);
 
 	// Blocca tutti i segnali tranne SIGTERM
 	sigset_t signals;
@@ -98,71 +114,49 @@ int main(int argc, char * argv[]) {
 
 	if (signal(SIGTERM, server_callback_sigterm) == SIG_ERR || 
 		signal(SIGALRM, server_callback_move) == SIG_ERR)
-		panic(LOG_WRITER_SERVER, "Errore creazione signal handlers");
+		panic("Errore creazione signal handlers");
 
 	// Aprire file posizioni
-	log_info(LOG_WRITER_SERVER, "Apretura file posizioni");
+	log_info("Apretura file posizioni");
 	position_file_fd = open("input/file_posizioni.txt", O_RDONLY, S_IRUSR);
 	if (position_file_fd == -1)
-		panic(LOG_WRITER_SERVER, "Errore apertura file posizioni");
+		panic("Errore apertura file posizioni");
 
 	// Crea memorie condivise
 
-	log_info(LOG_WRITER_SERVER, "Creazione e attach della memoria condivisa per la scacchiera");
+	log_info("Creazione e attach della memoria condivisa per la scacchiera");
 	const size_t checkboard_size = sizeof(pid_t) * CHECKBOARD_SIDE * CHECKBOARD_SIDE;
-	int checkboard_shmem_id = create_shared_memory(checkboard_size);
-	checkboard_shmem = (pid_t*)shmat(checkboard_shmem_id, NULL, 0);
+	int checkboard_shmem_id = shared_memory_create(checkboard_size);
+	checkboard_shmem = shared_memory_attach(checkboard_shmem_id, 0, pid_t);
 	memset(checkboard_shmem, 0, checkboard_size);
 
-	log_info(LOG_WRITER_SERVER, "Creazione e attach della memoria condivisa per la lista degli ack");
+	log_info("Creazione e attach della memoria condivisa per la lista degli ack");
 	const size_t ack_list_size = sizeof(ack_t) * ACK_LIST_MAX_COUNT;
-	int ack_list_shmem_id = create_shared_memory(ack_list_size);
-	ack_t*  ack_list_shmen = (ack_t*)shmat(ack_list_shmem_id, NULL, 0);
+	int ack_list_shmem_id = shared_memory_create(ack_list_size);
+	ack_t*  ack_list_shmen = shared_memory_attach(ack_list_shmem_id, 0, pid_t);
 	memset(ack_list_shmen, 0, ack_list_size);
 
-	// Crea semaforo per movimento devices
-
-	log_info(LOG_WRITER_SERVER, "Creazione semaforo movimento dei device");
-	devices_move_sem = create_semaphore(DEV_COUNT);
-	// NOTA: Il primo è a uno per permettere la prima inizializzazione dei device sulla scacchiera
-    unsigned short sem_init_val[DEV_COUNT] = { 1, 0, 0, 0, 0 };
-	memset(sem_init_val, 0, DEV_COUNT * sizeof(*sem_init_val));
-
-    union semun arg;
-    arg.array = sem_init_val;
-    if (semctl(devices_move_sem, 0, SETALL, arg) == -1)
-        panic(LOG_WRITER_SERVER, "Errore creazione semaforo");
-
 	// Crea semaforo per scacchiera
-
-	log_info(LOG_WRITER_SERVER, "Creazione mutex scacchiera");
-	checkboard_sem = create_semaphore(1);
-	sem_init_val[0] = 1;
-	
-    arg.array = sem_init_val;
-    if (semctl(checkboard_sem, 0, SETALL, arg) == -1)
-        panic(LOG_WRITER_SERVER, "Errore creazione mutex scacchiera");
+	log_info("Creazione mutex scacchiera");
+	checkboard_sem = mutex_create();
 
 	// Crea semaforo ack list
-	log_info(LOG_WRITER_SERVER, "Creazione mutex ack list");
-	int ack_list_sem = create_semaphore(1);
-	sem_init_val[0] = 1;
+	log_info("Creazione mutex ack list");
+	ack_list_sem = mutex_create();
 
-    arg.array = sem_init_val;
-    if (semctl(ack_list_sem, 0, SETALL, arg) == -1)
-        panic(LOG_WRITER_SERVER, "Errore creazione mutex ack list");
+	// Crea semaforo per movimento devices
+	// NOTA: Il primo è a uno per permettere la prima inizializzazione dei device sulla scacchiera
+	log_info("Creazione semaforo movimento dei device");
+	unsigned short move_sem_values[DEV_COUNT] = { 1, 0, 0, 0, 0 };
+	move_sem = semaphore_create(DEV_COUNT, move_sem_values);
 
-
-	// Timer
-	alarm(2);
-
-	log_info(LOG_WRITER_SERVER, "Creazione processo Ack Manager");
+	log_info("Creazione processo Ack Manager");
 	pid_t ack_manager_pid = fork();
 	switch(ack_manager_pid)
 	{
 		// ERRORE
 		case -1: {
-			panic(LOG_WRITER_SERVER, "Errore creazione ACK Manager");
+			panic("Errore creazione ACK Manager");
 		} break;
 
 		// Ack manager
@@ -173,7 +167,7 @@ int main(int argc, char * argv[]) {
 	
 	// Handles dati al device
 	device_data_t dev_data = {0};
-	dev_data.move_sem = devices_move_sem;
+	dev_data.move_sem = move_sem;
 	dev_data.position_file_fd = position_file_fd;
 	dev_data.checkboard_shme_id = checkboard_shmem_id;
 	dev_data.ack_list_shmem_id = ack_list_shmem_id;
@@ -181,7 +175,7 @@ int main(int argc, char * argv[]) {
 	dev_data.ack_list_sem = ack_list_sem;
 
 	// Apri ogni fifo dei devices per tenerli in vita
-	log_info(LOG_WRITER_SERVER, "Creazioni processi devices");
+	log_info("Creazioni processi devices");
 	for (int child = 0; child < DEV_COUNT; ++child)
 	{
 		pid_t child_pid = fork();
@@ -189,7 +183,7 @@ int main(int argc, char * argv[]) {
 		{
 			// ERRORE
 			case -1: {
-				panic(LOG_WRITER_SERVER, "Errore creazione figlio n. %d", child);
+				panic("Errore creazione figlio n. %d", child);
 			} break;
 
 			// Device
@@ -197,12 +191,24 @@ int main(int argc, char * argv[]) {
 				return device(child, dev_data);
 			} break;
 		}
+
+		char child_fifo_filename[128];
+		sprintf(child_fifo_filename, "/tmp/dev_fifo.%d", child_pid);
+
+		// TODO: QUESTO FA SCHIFO
+		// Potremmo far inviare un messaggio al padre dal figlio appena sta per creare
+		// la fifo...
+		log_info("Attesa apertura fifo '%s' in scrittura", child_fifo_filename);
+		while((devices_fifo_fd[child] = open(child_fifo_filename, O_WRONLY)) == -1);
 	}
+
+	// Avvia movimento figli
+	alarm(2);
 
 	int child_exit_status;
 	while(waitpid(-1, &child_exit_status, WUNTRACED) != -1) { }
 	if (errno != ECHILD) {
-		panic(LOG_WRITER_SERVER, "Errore non definito");
+		panic("Errore non definito");
 	}
 
 	return 0; 

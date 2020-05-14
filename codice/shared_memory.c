@@ -5,12 +5,21 @@
 #include "err_exit.h"
 #include "shared_memory.h"
 
-int create_shared_memory(size_t bytes)
+int shared_memory_create(size_t bytes)
 {
-    int flags = S_IRUSR | S_IWUSR;
-    int mem = shmget(IPC_PRIVATE, bytes, flags);
-    if (mem == -1)
-        ErrExit("Errore creazione memoria condivisa");
+    int flags = IPC_CREAT | S_IRUSR | S_IWUSR;
+    int result = shmget(IPC_PRIVATE, bytes, flags);
+    if (result == -1)
+        panic("Errore creazione memoria condivisa");
 
-    return mem;
+    return result;
+}
+
+void* _shared_memory_attach(int shmem, int flags) 
+{
+    void* result = shmat(shmem, NULL, flags);
+    if (result == (void*)(-1))
+        panic("Errore collegamento memoria condivisa");
+
+    return result;
 }

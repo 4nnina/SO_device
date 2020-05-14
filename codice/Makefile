@@ -1,4 +1,4 @@
-CFLAGS   = -g -Wall -std=gnu99
+CFLAGS   = -g -Wall -std=gnu99 -DLOG_MUTE=0
 INCLUDES = -I .
 OBJDIR   = obj
 

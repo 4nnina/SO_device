@@ -1,8 +1,10 @@
 #pragma once
 
-#define DEV_COUNT 5
-#define DEV_MSG_COUNT 32
-
+/**
+ *  Struttura dati per condividere handles dal server
+ *  al sottoprocesso device, evita l'uso di variabili
+ *  globali
+ */
 typedef struct device_data_t {
 
 	int position_file_fd;

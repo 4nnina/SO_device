@@ -64,19 +64,18 @@ static const char* log_levels_color[LOG_LEVELS_COUNT] =
 // Indica quali messaggi devono essere visualizzati
 void log_set_levels_mask(log_level_e mask);
 
-// Indica quali writers devono essere visualizzati
-//void log_set_writers_mask(log_writer_e mask);
+// Setta il writer di questo processo
+void log_set_proc_writer(log_writer_e writer);
 
 // Printa su schermo
-void _log_print(log_writer_e writer, log_level_e level, int guid, char* text);
+void _log_print(log_level_e level, int guid, char* text);
 
-#define LOG_MUTE 1
 #if LOG_MUTE
-    #define log_info(writer, ...) { char tmp[128]; sprintf(tmp, __VA_ARGS__); _log_print(writer, LOG_LEVEL_INFO,  getpid(), tmp); }
-    #define log_warn(writer, ...) { char tmp[128]; sprintf(tmp, __VA_ARGS__); _log_print(writer, LOG_LEVEL_WARN,  getpid(), tmp); }
-    #define log_erro(writer, ...) { char tmp[128]; sprintf(tmp, __VA_ARGS__); _log_print(writer, LOG_LEVEL_ERROR, getpid(), tmp); }
+    #define log_info(...)
+    #define log_warn(...)
+    #define log_erro(...)
 #else
-    #define log_info(writer, ...)
-    #define log_warn(writer, ...)
-    #define log_erro(writer, ...)
+    #define log_info(...) { char tmp[128]; sprintf(tmp, __VA_ARGS__); _log_print(LOG_LEVEL_INFO,  getpid(), tmp); }
+    #define log_warn(...) { char tmp[128]; sprintf(tmp, __VA_ARGS__); _log_print(LOG_LEVEL_WARN,  getpid(), tmp); }
+    #define log_erro(...) { char tmp[128]; sprintf(tmp, __VA_ARGS__); _log_print(LOG_LEVEL_ERROR, getpid(), tmp); }    
 #endif
