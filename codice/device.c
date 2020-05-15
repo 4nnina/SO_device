@@ -114,9 +114,9 @@ int device(int number, device_data_t data)
 	ack_t* ack_list = shared_memory_attach(data.ack_list_shmem_id, 0, ack_t);
 
 	// Messaggi ancora da inviare
-	message_t msg_to_send[DEV_MSG_COUNT];
+	message_t messages_queue[DEV_MSG_COUNT];
 	for (int i = 0; i < DEV_MSG_COUNT; ++i)
-		msg_to_send[i].message_id = 0;
+		messages_queue[i].message_id = 0;
 
 	int cur_x = -1, cur_y = -1;
 	while(1) 
@@ -170,7 +170,7 @@ int device(int number, device_data_t data)
 		// Prova ad inviare ogni messaggio
 		for(int i = 0; i < DEV_MSG_COUNT; ++i) 
 		{
-			message_t* msg = msg_to_send + i;
+			message_t* msg = messages_queue + i;
 			if (msg->message_id != 0) // Se valido
 			{
 				log_info("Analisi messaggio (id: %d)", msg->message_id);
@@ -201,8 +201,13 @@ int device(int number, device_data_t data)
 								// Inviamo messaggio la device
 								char filename[128];
 								sprintf(filename, "/tmp/dev_fifo.%d", pid);
+								
 								int output_fifo = open(filename, O_WRONLY);
+
+
 								write(output_fifo, &output, sizeof(output));
+								
+								
 								close(output_fifo);
 
 								// Rimuove dalla coda dei messaggi
@@ -221,15 +226,15 @@ int device(int number, device_data_t data)
 
 		int valid = 1;
 		message_t tmp_message;
-		while (valid && can_get_message(msg_to_send))
+		while (valid && can_get_message(messages_queue) /* && ack_list ha spazio! */)
 		{
 			size_t bytes_read = read(device_fifo_read_fd, &tmp_message, sizeof(tmp_message));
 			switch (bytes_read)
 			{
 				// Messaggio valido
-				case sizeof(tmp_message): {
+				case sizeof(tmp_message): 
+				{
 					log_info("Ricevuto un messaggio con ID = %d", tmp_message.message_id);
-
 					mutex_lock(data.ack_list_sem);
 					
 					// Inserisci in lista degli ack
@@ -239,7 +244,7 @@ int device(int number, device_data_t data)
 					// Controlla se non abbiamo finito
 					if (!ack_list_completed(ack_list, tmp_message.message_id))
 					{
-						message_t* msg = get_new_message(msg_to_send);
+						message_t* msg = get_new_message(messages_queue);
 						*msg = tmp_message;
 					}
 					

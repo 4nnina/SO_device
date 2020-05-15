@@ -44,7 +44,7 @@ int ack_list_completed(ack_t* list, int message_id) {
     return (counter == 5);
 }
 
-void ack_list_remove_completed(ack_t* list, int message_id) {
+void ack_list_remove_all(ack_t* list, int message_id) {
     for(int i = 0; i < ACK_LIST_MAX_COUNT; ++i)
         if (list[i].message_id == message_id)
             ack_list_remove(list + i);

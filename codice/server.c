@@ -17,20 +17,17 @@
 #include "log.h"
 #include "fifo.h"
 #include "device.h"
+#include "ack_manager.h"
 
 extern int errno;
-
-// ENTRY POINT
-int ack_manager()
-{
-	return 0;
-}
 
 // ======================================================================
 // Dati globali del server
 
 static pid_t devices_pid[DEV_COUNT];
 static int   devices_fifo_fd[DEV_COUNT];
+
+static int ack_manager_pid;
 
 static int position_file_fd;
 
@@ -55,7 +52,8 @@ void server_callback_sigterm(int sigterm) {
 		kill(devices_pid[child], SIGTERM);
 	}
 
-	// TODO ack manager
+	log_info("Invio segnale di terminazione all'ack manager");
+	kill(ack_manager_pid, SIGTERM);
 
 	int child_exit_status;
 	while(waitpid(-1, &child_exit_status, WUNTRACED) != -1) { }
@@ -84,14 +82,16 @@ void server_callback_sigterm(int sigterm) {
 void server_callback_move(int sigalrm) {
 
 	// Printa su schermo
-	log_warn(" =================== LISTA ACK =================== ");
+	printf("\n");
 	mutex_lock(ack_list_sem);
-	for(int i = 0; i < 10; ++i)
+	for(int i = 0; i < ACK_LIST_MAX_COUNT; ++i)
 	{
 		ack_t* ack = ack_list_shmen + i;
-		printf("\tACK: sender: %d, receiver: %d, id: %d\n", ack->pid_sender, ack->pid_receiver, ack->message_id);
+		if (ack->message_id != 0)
+			printf("\tACK: sender: %d, receiver: %d, id: %d\n", ack->pid_sender, ack->pid_receiver, ack->message_id);
 	}
 	mutex_unlock(ack_list_sem);
+	printf("\n");
 
 	//log_info(" ===================== CICLO ========================= ");
 	sem_release(move_sem, 0);
@@ -99,7 +99,11 @@ void server_callback_move(int sigalrm) {
 	alarm(2);
 }
 
-int main(int argc, char * argv[]) {
+int main(int argc, char * argv[]) 
+{
+
+	if (argc != 2)
+		panic("Usage: %s msg_queue_key", argv[0]);
 
 	log_set_levels_mask(LOG_LEVEL_INFO_BIT | LOG_LEVEL_WARN_BIT | LOG_LEVEL_ERROR_BIT);
 	log_set_proc_writer(LOG_WRITER_SERVER);
@@ -149,8 +153,16 @@ int main(int argc, char * argv[]) {
 	unsigned short move_sem_values[DEV_COUNT] = { 1, 0, 0, 0, 0 };
 	move_sem = semaphore_create(DEV_COUNT, move_sem_values);
 
+	// Handles dati all'ack manager
+	ack_manager_data_t ack_data = { 0 };
+	ack_data.ack_list_shmem_id = ack_list_shmem_id;
+	ack_data.ack_list_sem = ack_list_sem;
+
+	// TODO rendi robusto
+	key_t msg_queue_key = atoi(argv[1]);
+
 	log_info("Creazione processo Ack Manager");
-	pid_t ack_manager_pid = fork();
+	ack_manager_pid = fork();
 	switch(ack_manager_pid)
 	{
 		// ERRORE
@@ -160,7 +172,7 @@ int main(int argc, char * argv[]) {
 
 		// Ack manager
 		case 0: {
-			return ack_manager();
+			ack_manager(msg_queue_key, ack_data);
 		} break; 
 	}
 	
