@@ -17,7 +17,7 @@ static int  device_fifo_read_fd;
 
 message_t* get_new_message(message_t* messages) {
 	for(int i = 0; i < DEV_MSG_COUNT; ++i)
-		if (messages->message_id == 0)
+		if (messages[i].message_id == 0)
 			return messages + i;
 	return NULL;
 }
@@ -243,15 +243,22 @@ int device(int number, device_data_t data)
 					// Inserisci in lista degli ack
 					ack_t* slot = ack_list_get(ack_list);
 					message_to_ack(&tmp_message, slot);
-					
+
 					// Controlla se non abbiamo finito
 					if (!ack_list_completed(ack_list, tmp_message.message_id))
 					{
+						log_info("Dobbiamo ancora propagare il messaggio a qualcuno");
 						message_t* msg = get_new_message(messages_queue);
-						*msg = tmp_message;
+						if (msg)
+							*msg = tmp_message;
+						else
+							log_erro("Impossibile ottenere messaggio in device n. %d, index", number);
 					}
+					else
+						log_info("Abbiamo finito di propagare il messaggio");
 					
 					mutex_unlock(data.ack_list_sem);
+
 				} break;
 
 				case 0:

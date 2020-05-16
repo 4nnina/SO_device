@@ -118,15 +118,13 @@ void server_callback_move(int sigalrm)
 
 int main(int argc, char* argv[]) 
 {
-	if (argc < 2)
+	if (argc < 3)
 		panic("Usage: %s msg_queue_key file_posizioni [-iwe]", argv[0])
-	
-	//if (argc >= 3 && strlen(argv[3]))
 
 	// Setta impostazioni del logger se presenti
 	int log_level_bits = 0x0;
-	if (argc >= 3)
-			log_level_bits = log_derive_flags(argv[2]);
+	if (argc >= 4)
+			log_level_bits = log_derive_flags(argv[3]);
 
 	log_set_levels_mask(log_level_bits);
 	log_set_proc_writer(LOG_WRITER_SERVER);
@@ -143,8 +141,9 @@ int main(int argc, char* argv[])
 		panic("Errore creazione signal handlers");
 
 	// Aprire file posizioni
-	log_info("Apretura file posizioni");
-	position_file_fd = open("input/file_posizioni2.txt", O_RDONLY, S_IRUSR);
+	char* position_file_path = argv[2];
+	log_info("Apertura file posizioni '%s'", position_file_path);
+	position_file_fd = open(position_file_path, O_RDONLY, S_IRUSR);
 	if (position_file_fd == -1)
 		panic("Errore apertura file posizioni");
 

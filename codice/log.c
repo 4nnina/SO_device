@@ -40,8 +40,8 @@ static const char* log_levels_color[LOG_LEVELS_COUNT] =
     "\e[0;31m"      // ERROR: Rosso
 };
 
-static log_writer_e global_proc_writer = 0;
-static unsigned int global_levels_mask = 0;
+static log_writer_e global_proc_writer = LOG_WRITER_SERVER;
+static unsigned int global_levels_mask = 0xFFFFFFFF;
 
 void log_set_levels_mask(unsigned int mask) 
 {

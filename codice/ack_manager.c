@@ -78,6 +78,7 @@ void print_msg_queue(int msg_queue_id)
     struct msqid_ds ds;
     if (msgctl(msg_queue_id, IPC_STAT, &ds) == -1)
         panic("Errore ottenimento settings coda");
+
     log_info("MSGQ: msg_count %ld", ds.msg_qnum);
 }
 
@@ -95,6 +96,7 @@ void ack_manager_callback_alarm(int sigalrm)
     log_info("Controllo lista ack");
     mutex_lock(ack_list_sem);
     {
+        log_info("Controllo lista ack 2");
         for(int ack_idx = 0; ack_idx < ACK_LIST_MAX_COUNT; ++ack_idx)
         {
             int message_id = ack_list[ack_idx].message_id;
@@ -109,10 +111,8 @@ void ack_manager_callback_alarm(int sigalrm)
                     for (int i = 0; i < DEV_COUNT; ++i)
                     {
                         ack_t* ack = result.acks + i;
-                        struct tm* time = gmtime(&ack->timestamp);
-
-                        log_info("\tMSG %d: sender: %d, receiver: %d, time: %02d:%02d:%02d",
-                            ack->message_id, ack->pid_sender, ack->pid_receiver, time->tm_hour, time->tm_min, time->tm_sec);
+                        log_info("\tMSG %d: sender: %d, receiver: %d",
+                            ack->message_id, ack->pid_sender, ack->pid_receiver);
                     }
                     
                     log_info("Invio del messaggio al client %ld", result.type);
