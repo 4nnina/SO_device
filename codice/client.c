@@ -75,8 +75,8 @@ int main(int argc, char * argv[])
 	
 	// Scrive su file
 
-	sprintf(filename, "out_message_%d", message.message_id);
-	int output_file_fd = open(filename, O_CREAT | O_WRONLY | S_IRUSR);
+	sprintf(filename, "out_message_%d.txt", message.message_id);
+	int output_file_fd = open(filename, O_CREAT | O_WRONLY, S_IRUSR | S_IRGRP);
 	if (output_file_fd == -1)
 		panic("Errore apertura file");
 
@@ -84,18 +84,23 @@ int main(int argc, char * argv[])
 
 	char buffer[516];
 	sprintf(buffer, "MESSAGGIO %d: %s\n", message.message_id, message.message);
-	write(output_file_fd, buffer, strlen(buffer));
-
+	if(write(output_file_fd, buffer, strlen(buffer)) == -1 ) 
+		panic("Errore scrittura in file di testo messaggio");
+	
 	sprintf(buffer, "Lista acknowledgmend:\n");
-	write(output_file_fd, buffer, strlen(buffer));
+	if(write(output_file_fd, buffer, strlen(buffer)) == -1 ) 
+		panic("Errore scrittura in file di testo lista acknowledgmend");
+
 
 	for(int i = 0; i < DEV_COUNT; ++i)
 	{
 		ack_t* ack = message_list.acks + i;
 		printf("MSG %d: %d, %d\n", ack->message_id, ack->pid_sender, ack->pid_receiver);
 		sprintf(buffer, "\t%6d, %6d, %ul\n", ack->pid_sender, ack->pid_receiver, ack->timestamp);
+		if(write(output_file_fd, buffer, strlen(buffer)) == -1 ) 
+		panic("Errore scrittura in file di testo ack");
 	}
-
+	
 	close(output_file_fd);
 	printf("Fine scrittura\n");
 
