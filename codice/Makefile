@@ -8,13 +8,15 @@ SERVER_OBJS = $(addprefix $(OBJDIR)/, $(SERVER_SRCS:.c=.o))
 CLIENT_SRCS = client.c err_exit.c shared_memory.c msg_queue.c defines.c log.c
 CLIENT_OBJS = $(addprefix $(OBJDIR)/, $(CLIENT_SRCS:.c=.o))
 
-all: $(OBJDIR) server client
+all: $(OBJDIR) bin/server bin/client
 
-server: $(SERVER_OBJS)
+.PHONY: server
+bin/server: $(SERVER_OBJS)
 	@echo "Making executable: "$@
 	@$(CC) $^ -o $@  -lm
 
-client: $(CLIENT_OBJS)
+.PHONY: client
+bin/client: $(CLIENT_OBJS)
 	@echo "Making executable: "$@
 	@$(CC) $^ -o $@  -lm
 
@@ -30,8 +32,8 @@ run: clean server
 clean:
 	@rm -vf ${SERVER_OBJS}
 	@rm -vf ${CLIENT_OBJS}
-	@rm -vf server
-	@rm -vf client
+	@rm -vf bin/server
+	@rm -vf bin/client
 	@rm -vf /tmp/dev_fifo.*
 	@ipcrm -a
 	@echo "Removed object files and executables..."

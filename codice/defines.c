@@ -3,6 +3,7 @@
 ///         specifiche del progetto.
 
 #include "defines.h"
+#include <time.h>
 
 void message_to_ack(message_t* msg, ack_t* ack) 
 {

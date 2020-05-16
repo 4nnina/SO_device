@@ -4,8 +4,11 @@
 #include "defines.h"
 #include "shared_memory.h"
 #include "semaphore.h"
+#include "msg_queue.h"
 #include "err_exit.h"
 
+#include <stdlib.h>
+#include <time.h>
 #include <unistd.h>
 #include <sys/signal.h>
 #include <errno.h>
@@ -53,7 +56,7 @@ ack_msg_t create_message(ack_t* list, int message_id)
 {
     ack_msg_t result;
     result.type = find_client(list, message_id);
-    log_info("CLIENT = %d", result.type);
+    log_info("CLIENT = %ld", result.type);
 
     // Accumula messaggi
     int counter = 0;
@@ -75,7 +78,7 @@ void print_msg_queue(int msg_queue_id)
     struct msqid_ds ds;
     if (msgctl(msg_queue_id, IPC_STAT, &ds) == -1)
         panic("Errore ottenimento settings coda");
-    log_info("MSGQ: msg_count %d", ds.msg_qnum);
+    log_info("MSGQ: msg_count %ld", ds.msg_qnum);
 }
 
 // Invia messaggio nella coda
@@ -106,11 +109,13 @@ void ack_manager_callback_alarm(int sigalrm)
                     for (int i = 0; i < DEV_COUNT; ++i)
                     {
                         ack_t* ack = result.acks + i;
-                        log_info("\tMSG %d: sender: %d, receiver: %d, time: %ul",
-                            ack->message_id, ack->pid_sender, ack->pid_receiver, ack->timestamp);
+                        struct tm* time = gmtime(&ack->timestamp);
+
+                        log_info("\tMSG %d: sender: %d, receiver: %d, time: %02d:%02d:%02d",
+                            ack->message_id, ack->pid_sender, ack->pid_receiver, time->tm_hour, time->tm_min, time->tm_sec);
                     }
                     
-                    log_info("Invio del messaggio al client %d", result.type);
+                    log_info("Invio del messaggio al client %ld", result.type);
                     send_message(msg_queue_id, &result);
 
                     log_info("Rimozione messaggi con id %d dalla ack lista", message_id);
@@ -128,7 +133,7 @@ void ack_manager_callback_alarm(int sigalrm)
 // Entry point
 void ack_manager(key_t msg_queue_key, ack_manager_data_t data) 
 {
-    log_set_levels_mask(LOG_LEVEL_INFO_BIT | LOG_LEVEL_WARN_BIT | LOG_LEVEL_ERROR_BIT);
+    log_set_levels_mask(data.log_level_bits);
 	log_set_proc_writer(LOG_WRITER_ACKMAN);
 
     if (signal(SIGTERM, ack_manager_callback_sigterm) == SIG_ERR || signal(SIGALRM, ack_manager_callback_alarm) == SIG_ERR)

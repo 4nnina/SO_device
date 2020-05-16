@@ -7,6 +7,8 @@
  */
 typedef struct device_data_t {
 
+	int log_level_bits;
+
 	int position_file_fd;
 
 	int checkboard_shme_id;

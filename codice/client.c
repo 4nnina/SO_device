@@ -8,6 +8,8 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <time.h>
+#include <sys/stat.h>
 #include <string.h>
 
 ack_msg_t wait_message(int msg_queue_id, pid_t pid)
@@ -66,7 +68,7 @@ int main(int argc, char * argv[])
 	// Aspetta messaggio
 	key_t msg_queue_key = atoi(argv[1]);
 
-	printf("Creazione msg queue");
+	printf("Creazione msg queue\n");
 	int msg_queue_id = msg_queue_create(msg_queue_key);
 
 	printf("Attesa lista acks\n");
@@ -91,18 +93,22 @@ int main(int argc, char * argv[])
 	if(write(output_file_fd, buffer, strlen(buffer)) == -1 ) 
 		panic("Errore scrittura in file di testo lista acknowledgmend");
 
-
 	for(int i = 0; i < DEV_COUNT; ++i)
 	{
 		ack_t* ack = message_list.acks + i;
-		printf("MSG %d: %d, %d\n", ack->message_id, ack->pid_sender, ack->pid_receiver);
-		sprintf(buffer, "\t%6d, %6d, %ul\n", ack->pid_sender, ack->pid_receiver, ack->timestamp);
+		struct tm* time = gmtime(&ack->timestamp);
+
+		printf("MSG %d: sender %d, receiver %d, time: %02d:%02d:%02d\n", 
+			ack->message_id, ack->pid_sender, ack->pid_receiver, time->tm_hour, time->tm_min, time->tm_sec);
+
+		sprintf(buffer, "\t%6d, %6d, %02d:%02d:%02d\n", 
+			ack->pid_sender, ack->pid_receiver, time->tm_hour, time->tm_min, time->tm_sec);
+
 		if(write(output_file_fd, buffer, strlen(buffer)) == -1 ) 
-		panic("Errore scrittura in file di testo ack");
+			panic("Errore scrittura in file di testo ack");
 	}
 	
 	close(output_file_fd);
-	printf("Fine scrittura\n");
-
+	printf("Completato\n");
     return 0;
 }

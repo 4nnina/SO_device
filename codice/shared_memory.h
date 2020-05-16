@@ -14,3 +14,4 @@ void shared_memory_remove(int shmid);
 void* _shared_memory_attach(int shmid, int flags);
 #define shared_memory_attach(shmid, flags, type) \
     (type*)_shared_memory_attach(shmid, flags)
+

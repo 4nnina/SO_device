@@ -23,3 +23,9 @@ void* _shared_memory_attach(int shmem, int flags)
 
     return result;
 }
+
+void shared_memory_remove(int shmid) 
+{
+    if (shmctl(shmid, IPC_RMID, NULL) == -1)
+        panic("Errore eliminazione memoria condivisa");
+}

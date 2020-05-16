@@ -9,6 +9,7 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <memory.h>
+#include <time.h>
 
 #include "err_exit.h"
 #include "defines.h"
@@ -35,7 +36,10 @@ static int move_sem;
 static int checkboard_sem;
 static int ack_list_sem;
 
+static int checkboard_shmem_id;
 static pid_t* checkboard_shmem;
+
+static int ack_list_shmem_id;
 static ack_t*  ack_list_shmen;
 
 // Uccide tutto
@@ -70,6 +74,12 @@ void server_callback_sigterm(int sigterm) {
 	log_info("Chiusura mutex ack list");
 	semaphore_remove(ack_list_sem);
 
+	log_info("Eliminazione memoria condivisa scacchiera");
+	shared_memory_remove(checkboard_shmem_id);
+
+	log_info("Eliminazione memoria condivisa ack list");
+	shared_memory_remove(ack_list_shmem_id);
+
 	log_info("Chiusura file posizioni");
 	if (close(position_file_fd) == -1)
 		panic("Errore chiusura file posizioni");
@@ -79,34 +89,55 @@ void server_callback_sigterm(int sigterm) {
 }
 
 // Avvia il movimento dei device (2s) e printa
-void server_callback_move(int sigalrm) {
+void server_callback_move(int sigalrm) 
+{
+	time_t timestamp = time(NULL);
+	struct tm* print_time = gmtime(&timestamp);
 
 	// Printa su schermo
-	printf("\n");
+	printf("\n ----- DEVICES ----------------------- %02d:%02d:%02d  \n",
+		print_time->tm_hour, print_time->tm_min, print_time->tm_sec);
+
 	mutex_lock(ack_list_sem);
 	for(int i = 0; i < ACK_LIST_MAX_COUNT; ++i)
 	{
 		ack_t* ack = ack_list_shmen + i;
-		if (ack->message_id != 0)
-			printf("\tACK: sender: %d, receiver: %d, id: %d\n", ack->pid_sender, ack->pid_receiver, ack->message_id);
+		if (ack->message_id != 0) 
+		{
+			struct tm* time = gmtime(&ack->timestamp);
+			printf("\tACK: id: %d, sender: %d, receiver: %d, time: %02d:%02d:%02d\n", 
+				ack->pid_sender, ack->pid_receiver, ack->message_id, time->tm_hour, time->tm_min, time->tm_sec);
+		}
 	}
 	mutex_unlock(ack_list_sem);
-	printf("\n");
 
-	//log_info(" ===================== CICLO ========================= ");
+	printf("\n\n");
 	sem_release(move_sem, 0);
-
 	alarm(2);
 }
 
 int main(int argc, char * argv[]) 
 {
+	int log_level_bits = 0x0;
+	if (argc < 2)
+		panic("Usage: %s msg_queue_key [-iwe]", argv[0])
+	else
+	{
+		// Setta impostazioni del logger se presenti
+		if (argc == 3 && strlen(argv[2]) >= 2)
+		{
+			char* cmd = argv[2];
+			for(int i = 1; i < strlen(cmd); ++i)
+				switch (cmd[i]) {
+					case 'i': log_level_bits |= LOG_LEVEL_INFO_BIT;  break;
+					case 'w': log_level_bits |= LOG_LEVEL_WARN_BIT;  break;
+					case 'e': log_level_bits |= LOG_LEVEL_ERROR_BIT; break;
+				}
+		}
 
-	if (argc != 2)
-		panic("Usage: %s msg_queue_key", argv[0]);
-
-	log_set_levels_mask(LOG_LEVEL_INFO_BIT | LOG_LEVEL_WARN_BIT | LOG_LEVEL_ERROR_BIT);
-	log_set_proc_writer(LOG_WRITER_SERVER);
+		log_set_levels_mask(log_level_bits);
+		log_set_proc_writer(LOG_WRITER_SERVER);
+	}
 
 	// Blocca tutti i segnali tranne SIGTERM
 	sigset_t signals;
@@ -129,14 +160,14 @@ int main(int argc, char * argv[])
 
 	log_info("Creazione e attach della memoria condivisa per la scacchiera");
 	const size_t checkboard_size = sizeof(pid_t) * CHECKBOARD_SIDE * CHECKBOARD_SIDE;
-	int checkboard_shmem_id = shared_memory_create(checkboard_size);
+	checkboard_shmem_id = shared_memory_create(checkboard_size);
 	checkboard_shmem = shared_memory_attach(checkboard_shmem_id, 0, pid_t);
 	memset(checkboard_shmem, 0, checkboard_size);
 
 	log_info("Creazione e attach della memoria condivisa per la lista degli ack");
 	const size_t ack_list_size = sizeof(ack_t) * ACK_LIST_MAX_COUNT;
-	int ack_list_shmem_id = shared_memory_create(ack_list_size);
-	ack_list_shmen = shared_memory_attach(ack_list_shmem_id, 0, pid_t);
+	ack_list_shmem_id = shared_memory_create(ack_list_size);
+	ack_list_shmen = shared_memory_attach(ack_list_shmem_id, 0, ack_t);
 	memset(ack_list_shmen, 0, ack_list_size);
 
 	// Crea semaforo per scacchiera
@@ -155,6 +186,7 @@ int main(int argc, char * argv[])
 
 	// Handles dati all'ack manager
 	ack_manager_data_t ack_data = { 0 };
+	ack_data.log_level_bits = log_level_bits;
 	ack_data.ack_list_shmem_id = ack_list_shmem_id;
 	ack_data.ack_list_sem = ack_list_sem;
 
@@ -178,6 +210,7 @@ int main(int argc, char * argv[])
 	
 	// Handles dati al device
 	device_data_t dev_data = {0};
+	dev_data.log_level_bits = log_level_bits;
 	dev_data.move_sem = move_sem;
 	dev_data.position_file_fd = position_file_fd;
 	dev_data.checkboard_shme_id = checkboard_shmem_id;

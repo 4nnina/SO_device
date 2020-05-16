@@ -8,6 +8,8 @@
  */
 typedef struct ack_manager_data_t {
 
+    int log_level_bits;
+
     int ack_list_shmem_id;
     int ack_list_sem;
 

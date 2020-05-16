@@ -2,6 +2,41 @@
 
 #include <stdio.h>
 
+// Colore del guid dei messaggi (unix style)
+const char* log_guid_color = "\e[0;32;2m"; // Verde
+
+// Nome dello scrittore
+static const char* log_writers_text[LOG_WRITERS_COUNT] = 
+{
+    "ACKMAN", 
+    "SERVER", 
+    "DEVICE"
+};
+
+// Colore del nome dello scrittore (unix style)
+static const char* log_writers_color[LOG_WRITERS_COUNT] = 
+{
+    "\e[38;5;129m",     // ACKMAN: Viola
+    "\e[38;5;118m",     // SERVER: Verde
+    "\e[38;5;81m",      // DEVICE: Bluastro
+};
+
+// Nome del livello
+static const char* log_levels_text[LOG_LEVELS_COUNT] = 
+{
+    "INFO", 
+    "WARN", 
+    "ERR"
+};
+
+// Colore dei messaggi in base al livello
+static const char* log_levels_color[LOG_LEVELS_COUNT] = 
+{
+    "\e[m",         // INFO: Bianco
+    "\e[0;33m",     // WARN: Marrone 
+    "\e[0;31m"      // ERROR: Rosso
+};
+
 static log_writer_e global_proc_writer = 0;
 static unsigned int global_levels_mask = 0;
 

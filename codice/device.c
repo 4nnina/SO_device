@@ -6,6 +6,7 @@
 #include "shared_memory.h"
 #include "defines.h"
 
+#include <stdlib.h>
 #include <unistd.h>
 #include <sys/signal.h>
 #include <errno.h>
@@ -87,7 +88,7 @@ void get_next_position(int position_file_fd, int* x, int* y)
 // ENTRY POINT
 int device(int number, device_data_t data)
 {
-	log_set_levels_mask(LOG_LEVEL_INFO_BIT | LOG_LEVEL_WARN_BIT | LOG_LEVEL_ERROR_BIT);
+	log_set_levels_mask(data.log_level_bits);
 	log_set_proc_writer(LOG_WRITER_DEVICE);
 
 	log_info("Figlio n. %d", number);
@@ -138,6 +139,7 @@ int device(int number, device_data_t data)
 			static int initialized = 0;
 			if (!initialized)
 			{
+				log_info("Posizione initiale: (%d, %d)", new_x, new_y);
 				checkboard[new_x + CHECKBOARD_SIDE * new_y] = getpid();	
 				initialized = 1;
 
@@ -146,6 +148,7 @@ int device(int number, device_data_t data)
 			}
 			else
 			{
+				log_info("Mi muovo da (%d, %d) a (%d, %d)", cur_x, cur_y, new_x, new_y);
 				checkboard[cur_x + CHECKBOARD_SIDE * cur_y] = 0;
 				checkboard[new_x + CHECKBOARD_SIDE * new_y] = getpid();
 
@@ -173,8 +176,6 @@ int device(int number, device_data_t data)
 			message_t* msg = messages_queue + i;
 			if (msg->message_id != 0) // Se valido
 			{
-				log_info("Analisi messaggio (id: %d)", msg->message_id);
-				
 				int radius = (int)msg->max_distance; // NOTA: Consideriamo regioni quadrate
 				int found = 0;
 
@@ -192,7 +193,7 @@ int device(int number, device_data_t data)
 
 							if (send)
 							{
-								log_info("Invio del messaggio da %d a %d con ID = %d", getpid(), pid, msg->message_id);
+								log_info("Invio del messaggio (id %d) da %d a %d", msg->message_id, getpid(), pid);
 
 								message_t output = *msg;
 								output.pid_sender = getpid();
@@ -203,12 +204,14 @@ int device(int number, device_data_t data)
 								sprintf(filename, "/tmp/dev_fifo.%d", pid);
 								
 								int output_fifo = open(filename, O_WRONLY);
+								if (output_fifo == -1)
+									panic("Errore apertura fifo device");
 
+								if (write(output_fifo, &output, sizeof(output)) == -1)
+									panic("Errore scrittura fifo device");
 
-								write(output_fifo, &output, sizeof(output));
-								
-								
-								close(output_fifo);
+								if (close(output_fifo) == -1)
+									panic("Errore chiusura fifo device");
 
 								// Rimuove dalla coda dei messaggi
 								remove_message(msg);
@@ -234,7 +237,7 @@ int device(int number, device_data_t data)
 				// Messaggio valido
 				case sizeof(tmp_message): 
 				{
-					log_info("Ricevuto un messaggio con ID = %d", tmp_message.message_id);
+					log_info("Ricevuto un messaggio (id %d)", tmp_message.message_id);
 					mutex_lock(data.ack_list_sem);
 					
 					// Inserisci in lista degli ack
@@ -251,12 +254,12 @@ int device(int number, device_data_t data)
 					mutex_unlock(data.ack_list_sem);
 				} break;
 
-				// Non ci sono più messaggi
 				case 0:
 					log_info("Non ci sono più messaggi");
 					valid = 0;
 					break;
 
+				// Non ci sono più messaggi
 				case -1: {
 					if (errno == EAGAIN)
 					   valid = 0;
