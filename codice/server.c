@@ -118,26 +118,16 @@ void server_callback_move(int sigalrm)
 
 int main(int argc, char * argv[]) 
 {
-	int log_level_bits = 0x0;
 	if (argc < 2)
 		panic("Usage: %s msg_queue_key [-iwe]", argv[0])
-	else
-	{
-		// Setta impostazioni del logger se presenti
-		if (argc == 3 && strlen(argv[2]) >= 2)
-		{
-			char* cmd = argv[2];
-			for(int i = 1; i < strlen(cmd); ++i)
-				switch (cmd[i]) {
-					case 'i': log_level_bits |= LOG_LEVEL_INFO_BIT;  break;
-					case 'w': log_level_bits |= LOG_LEVEL_WARN_BIT;  break;
-					case 'e': log_level_bits |= LOG_LEVEL_ERROR_BIT; break;
-				}
-		}
+	
+	// Setta impostazioni del logger se presenti
+	int log_level_bits = 0x0;
+	if (argc == 3)
+			log_level_bits = log_derive_flags(argv[2]);
 
-		log_set_levels_mask(log_level_bits);
-		log_set_proc_writer(LOG_WRITER_SERVER);
-	}
+	log_set_levels_mask(log_level_bits);
+	log_set_proc_writer(LOG_WRITER_SERVER);
 
 	// Blocca tutti i segnali tranne SIGTERM
 	sigset_t signals;

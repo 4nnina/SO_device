@@ -3,6 +3,7 @@
 
 #include "defines.h"
 #include "err_exit.h"
+#include "log.h"
 #include "msg_queue.h"
 #include "ack_manager.h"
 
@@ -24,11 +25,16 @@ ack_msg_t wait_message(int msg_queue_id, pid_t pid)
 
 int main(int argc, char * argv[]) 
 {
-	log_set_levels_mask(LOG_LEVEL_INFO_BIT | LOG_LEVEL_WARN_BIT | LOG_LEVEL_ERROR_BIT);
-	log_set_proc_writer(LOG_WRITER_SERVER);
+	if (argc < 2)
+		panic("Usage: %s msg_queue_key [-iwe]", argv[0]);
 
-	if (argc != 2)
-		panic("Usage: %s msg_queue_key", argv[0]);
+	// Setta impostazioni del logger se presenti
+	int log_level_bits = 0x0;
+	if (argc == 3)
+			log_level_bits = log_derive_flags(argv[2]);
+
+	log_set_levels_mask(log_level_bits);
+	log_set_proc_writer(LOG_WRITER_CLIENT);
 
 	message_t message = { 0 };
 	message.pid_sender = getpid();
@@ -54,11 +60,12 @@ int main(int argc, char * argv[])
 	char filename[128];
 	sprintf(filename, "/tmp/dev_fifo.%d", message.pid_receiver);
 
-	printf("Scrittura messaggio su %s\n", filename);
+	log_info("Apertuta fifo device");
 	int dev_fifo_fd = open(filename, O_CREAT | O_WRONLY);
 	if (dev_fifo_fd == -1)
 		panic("Errore apertura fifo device");
 
+	log_info("Scrittura messaggio su %s", filename);
 	size_t bytes = write(dev_fifo_fd, &message, sizeof(message));
 	if (bytes == -1)
 		panic("Errore scrittura messaggio");
@@ -68,12 +75,12 @@ int main(int argc, char * argv[])
 	// Aspetta messaggio
 	key_t msg_queue_key = atoi(argv[1]);
 
-	printf("Creazione msg queue\n");
+	log_info("Creazione msg queue");
 	int msg_queue_id = msg_queue_create(msg_queue_key);
 
-	printf("Attesa lista acks\n");
+	log_info("Attesa lista acks");
 	ack_msg_t message_list = wait_message(msg_queue_id, getpid());
-	printf("Ricevuta lista ack!\n");
+	log_info("Ricevuta lista ack!");
 	
 	// Scrive su file
 
@@ -82,7 +89,7 @@ int main(int argc, char * argv[])
 	if (output_file_fd == -1)
 		panic("Errore apertura file");
 
-	printf("Scrittura su %s dell'output\n", filename);
+	log_info("Scrittura su %s dell'output", filename);
 
 	char buffer[516];
 	sprintf(buffer, "MESSAGGIO %d: %s\n", message.message_id, message.message);
@@ -109,6 +116,6 @@ int main(int argc, char * argv[])
 	}
 	
 	close(output_file_fd);
-	printf("Completato\n");
+	log_info("Completato");
     return 0;
 }

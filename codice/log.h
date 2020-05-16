@@ -7,6 +7,7 @@ typedef enum log_writer_e {
     LOG_WRITER_ACKMAN,
     LOG_WRITER_SERVER,
     LOG_WRITER_DEVICE,
+    LOG_WRITER_CLIENT,
 
     LOG_WRITERS_COUNT
 
@@ -34,6 +35,9 @@ void log_set_proc_writer(log_writer_e writer);
 
 // Printa su schermo
 void _log_print(log_level_e level, int guid, char* text);
+
+// Trasforma la flag da console in una maschera di livelli  
+log_level_e log_derive_flags(char* flag);
 
 #define LOG_TMP_BUFFER_SIZE 516
 

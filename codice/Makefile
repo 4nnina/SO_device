@@ -10,12 +10,10 @@ CLIENT_OBJS = $(addprefix $(OBJDIR)/, $(CLIENT_SRCS:.c=.o))
 
 all: $(OBJDIR) bin/server bin/client
 
-.PHONY: server
 bin/server: $(SERVER_OBJS)
 	@echo "Making executable: "$@
 	@$(CC) $^ -o $@  -lm
 
-.PHONY: client
 bin/client: $(CLIENT_OBJS)
 	@echo "Making executable: "$@
 	@$(CC) $^ -o $@  -lm

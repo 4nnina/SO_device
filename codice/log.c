@@ -1,6 +1,7 @@
 #include "log.h"
 
 #include <stdio.h>
+#include <string.h>
 
 // Colore del guid dei messaggi (unix style)
 const char* log_guid_color = "\e[0;32;2m"; // Verde
@@ -10,7 +11,8 @@ static const char* log_writers_text[LOG_WRITERS_COUNT] =
 {
     "ACKMAN", 
     "SERVER", 
-    "DEVICE"
+    "DEVICE",
+    "CLIENT",
 };
 
 // Colore del nome dello scrittore (unix style)
@@ -19,6 +21,7 @@ static const char* log_writers_color[LOG_WRITERS_COUNT] =
     "\e[38;5;129m",     // ACKMAN: Viola
     "\e[38;5;118m",     // SERVER: Verde
     "\e[38;5;81m",      // DEVICE: Bluastro
+    "\e[38;5;190m",     // DEVICE: Giallo
 };
 
 // Nome del livello
@@ -62,4 +65,16 @@ void _log_print(log_level_e level, int guid, char* text)
             log_guid_color, guid,
             log_levels_color[level], text);
     }
+}
+
+log_level_e log_derive_flags(char* flag)
+{
+    log_level_e result = 0x0;
+	for(int i = 1; i < strlen(flag); ++i)
+		switch (flag[i]) {
+			case 'i': result |= LOG_LEVEL_INFO_BIT;  break;
+			case 'w': result |= LOG_LEVEL_WARN_BIT;  break;
+			case 'e': result |= LOG_LEVEL_ERROR_BIT; break;
+		}
+    return result;
 }
