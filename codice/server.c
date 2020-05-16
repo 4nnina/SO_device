@@ -116,14 +116,16 @@ void server_callback_move(int sigalrm)
 	alarm(2);
 }
 
-int main(int argc, char * argv[]) 
+int main(int argc, char* argv[]) 
 {
 	if (argc < 2)
-		panic("Usage: %s msg_queue_key [-iwe]", argv[0])
+		panic("Usage: %s msg_queue_key file_posizioni [-iwe]", argv[0])
 	
+	//if (argc >= 3 && strlen(argv[3]))
+
 	// Setta impostazioni del logger se presenti
 	int log_level_bits = 0x0;
-	if (argc == 3)
+	if (argc >= 3)
 			log_level_bits = log_derive_flags(argv[2]);
 
 	log_set_levels_mask(log_level_bits);
