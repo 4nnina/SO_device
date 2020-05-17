@@ -93,10 +93,9 @@ void send_message(int msg_queue_id, ack_msg_t* message)
 // Ogni 5 secondi
 void ack_manager_callback_alarm(int sigalrm)
 {
-    log_info("Controllo lista ack");
     mutex_lock(ack_list_sem);
+    log_info("Controllo lista ack");
     {
-        log_info("Controllo lista ack 2");
         for(int ack_idx = 0; ack_idx < ACK_LIST_MAX_COUNT; ++ack_idx)
         {
             int message_id = ack_list[ack_idx].message_id;

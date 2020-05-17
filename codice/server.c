@@ -40,7 +40,7 @@ static int checkboard_shmem_id;
 static pid_t* checkboard_shmem;
 
 static int ack_list_shmem_id;
-static ack_t*  ack_list_shmen;
+static ack_t* ack_list_shmen;
 
 // Uccide tutto
 void server_callback_sigterm(int sigterm) {
@@ -88,27 +88,56 @@ void server_callback_sigterm(int sigterm) {
 	exit(0);
 }
 
+typedef struct int2 {
+	int x, y;
+} int2;
+
 // Avvia il movimento dei device (2s) e printa
 void server_callback_move(int sigalrm) 
 {
 	time_t timestamp = time(NULL);
 	struct tm* print_time = gmtime(&timestamp);
 	
+	// Ottiene posizione dei device sulla scacchiera
+	int2 positions[DEV_COUNT];
+	mutex_lock(checkboard_sem);
+	for(int dev = 0; dev < DEV_COUNT; ++dev) 
+	{
+		int found = 0;
+		for(int y = 0; y < CHECKBOARD_SIDE && !found; ++y)
+			for(int x = 0; x <CHECKBOARD_SIDE && !found; ++x)
+				if (checkboard_shmem[x + y * CHECKBOARD_SIDE] == devices_pid[dev]) {
+					positions[dev].x = x;
+					positions[dev].y = y;
+					found = 1;
+				}
+	}
+	mutex_unlock(checkboard_sem);
+
 	//PRINT DI ANNA
 	static int step = 0;
 
 	printf("\n# Step %d: device positions ########################\n", step);
-	for (int child = 0; child < DEV_COUNT; ++child){
-		printf("DEVICE %d - %d", child + 1, devices_pid[child]);
-		printf(" (x , y): ");
+	mutex_lock(ack_list_sem);
+	for (int dev = 0; dev < DEV_COUNT; ++dev){
+		printf("DEVICE %d - %d", dev + 1, devices_pid[dev]);
+		printf(" (%d , %d): ", positions[dev].x, positions[dev].y);
 		
 		printf(" msgs: lista message_id\n");
-
+		int found = 0;
+		for(int msg = 0; msg < ACK_LIST_MAX_COUNT && found != 5; ++msg)
+			if (ack_list_shmen[msg].message_id != 0 && ack_list_shmen[msg].pid_receiver == devices_pid[dev]) {
+				printf(" %d ", ack_list_shmen[msg].message_id);
+				found += 1;
+			}
+		putchar('\n');
 	}
+	mutex_unlock(ack_list_sem);
+
 	step += 1;
 	printf("######################################################\n");
 
-	// Printa su schermo
+#if 0
 	printf("\n ----- DEVICES ----------------------- %02d:%02d:%02d  \n",
 		print_time->tm_hour, print_time->tm_min, print_time->tm_sec);
 
@@ -124,6 +153,7 @@ void server_callback_move(int sigalrm)
 		}
 	}
 	mutex_unlock(ack_list_sem);
+#endif
 
 	printf("\n\n");
 	sem_release(move_sem, 0);
