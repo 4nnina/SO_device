@@ -87,49 +87,27 @@ void server_callback_sigterm(int sigterm) {
 	log_warn("Terminazione server");
 	exit(0);
 }
-/*
-//funzoine di anna
-void get_list_last_msg_position(int devices_pid,char *list_msg_id)
-{
-	mutex_lock(ack_list_sem);
-	for (int i = 0; i < ACK_LIST_MAX_COUNT; ++i)
-	{
-		ack_t* ack = ack_list_shmen + i;
-		if (ack->message_id != 0) 
-		{
-			int last = i;
-			for (int j = 0; j < ACK_LIST_MAX_COUNT; ++j)
-			{
-				ack_t* ack_tmp = ack_list_shmen + j;
-				if(ack_tmp->message_id != 0 && ack_tmp->timestamp > ack->timestamp)
-					last = j;
-			}
-
-		}
-	}
-	mutex_unlock(ack_list_sem);
-
-}*/
 
 // Avvia il movimento dei device (2s) e printa
 void server_callback_move(int sigalrm) 
 {
 	time_t timestamp = time(NULL);
 	struct tm* print_time = gmtime(&timestamp);
-	/*
+	
 	//PRINT DI ANNA
-	int step = 0;
-	int cur_x, cur_y;
-	char *list_msg_id;
-	printf("# Step %d: device positions ########################\n", step);
+	static int step = 0;
+
+	printf("\n# Step %d: device positions ########################\n", step);
 	for (int child = 0; child < DEV_COUNT; ++child){
-		printf("DEVICE %d: pid = %d", child + 1, devices_pid[child]);
-		//printf("\t(%d,%d): ", position[0][child], position[1][child]);
-		get_list_msg(devices_pid,list_msg_id);
-		printf("msgs: %s\n", list_msg_id);
+		printf("DEVICE %d - %d", child + 1, devices_pid[child]);
+		printf(" (x , y): ");
+		
+		printf(" msgs: lista message_id\n");
 
 	}
-*/
+	step += 1;
+	printf("######################################################\n");
+
 	// Printa su schermo
 	printf("\n ----- DEVICES ----------------------- %02d:%02d:%02d  \n",
 		print_time->tm_hour, print_time->tm_min, print_time->tm_sec);
