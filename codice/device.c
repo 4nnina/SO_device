@@ -15,6 +15,7 @@
 static char device_filename[128];
 static int  device_fifo_read_fd;
 
+
 message_t* get_new_message(message_t* messages) {
 	for(int i = 0; i < DEV_MSG_COUNT; ++i)
 		if (messages[i].message_id == 0)
@@ -75,6 +76,7 @@ void get_next_position(int position_file_fd, int* x, int* y)
 	}
 }
 
+
 /**
  * Prende possesso della scacchiera per settare una cella 
  */
@@ -133,7 +135,7 @@ int device(int number, device_data_t data)
 		// Avanza la posizione
 		int new_x, new_y;
 		get_next_position(data.position_file_fd, &new_x, &new_y);
-
+		
 		mutex_lock(data.checkboard_sem);
 		{
 			static int initialized = 0;

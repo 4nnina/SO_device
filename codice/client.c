@@ -108,8 +108,8 @@ int main(int argc, char * argv[])
 		printf("MSG %d: sender %d, receiver %d, time: %02d:%02d:%02d\n", 
 			ack->message_id, ack->pid_sender, ack->pid_receiver, time->tm_hour, time->tm_min, time->tm_sec);
 
-		sprintf(buffer, "\t%6d, %6d, %02d:%02d:%02d\n", 
-			ack->pid_sender, ack->pid_receiver, time->tm_hour, time->tm_min, time->tm_sec);
+		sprintf(buffer, "\t%6d, %6d, %02d/%02d/%02d %02d:%02d:%02d\n", 
+			ack->pid_sender, ack->pid_receiver, time->tm_mday, time->tm_mon, 1900 + time->tm_year, time->tm_hour, time->tm_min, time->tm_sec);
 
 		if(write(output_file_fd, buffer, strlen(buffer)) == -1 ) 
 			panic("Errore scrittura in file di testo ack");
