@@ -114,7 +114,7 @@ void server_callback_move(int sigalrm)
 	}
 	mutex_unlock(checkboard_sem);
 
-	//PRINT DI ANNA
+	//PRINT
 	static int step = 0;
 
 	printf("\n# Step %d: device positions ########################\n", step);
@@ -123,11 +123,21 @@ void server_callback_move(int sigalrm)
 		printf("DEVICE %d - %d", dev + 1, devices_pid[dev]);
 		printf(" (%d , %d): ", positions[dev].x, positions[dev].y);
 		
-		printf(" msgs: lista message_id\n");
+		printf(" msgs: ");
 		int found = 0;
 		for(int msg = 0; msg < ACK_LIST_MAX_COUNT && found != 5; ++msg)
 			if (ack_list_shmen[msg].message_id != 0 && ack_list_shmen[msg].pid_receiver == devices_pid[dev]) {
-				printf(" %d ", ack_list_shmen[msg].message_id);
+				//stampare solo messaggi attualmente nel device
+				int time = ack_list_shmen[msg].timestamp;
+				int id = ack_list_shmen[msg].message_id;
+				int stampa = 1;
+				for (int last_msg = 0; last_msg < ACK_LIST_MAX_COUNT; ++last_msg)
+				{
+					if	(ack_list_shmen[last_msg].message_id ==  id	&& time < ack_list_shmen[last_msg].timestamp)
+							stampa = 0;
+				}
+				if(stampa) //superfluo se voglio tutti i messaggi
+					printf(" %d ", ack_list_shmen[msg].message_id);
 				found += 1;
 			}
 		putchar('\n');
@@ -136,6 +146,7 @@ void server_callback_move(int sigalrm)
 
 	step += 1;
 	printf("######################################################\n");
+	printf("pid server: %d\n", getpid());
 
 #if 0
 	printf("\n ----- DEVICES ----------------------- %02d:%02d:%02d  \n",
