@@ -20,6 +20,12 @@
 #include "device.h"
 #include "ack_manager.h"
 
+// Colori output
+#define COLOR_RESET		  "\e[m"
+#define COLOR_DEVICE_PID  "\e[38;5;118m" // Verde
+#define COLOR_DEVICE_POS  "\e[38;5;190m" // Giallo 
+#define COLOR_DEVICE_MSGS "\e[m"         // Bianco
+
 extern int errno;
 
 // ======================================================================
@@ -97,15 +103,21 @@ void server_callback_move(int sigalrm)
 {
 	time_t timestamp = time(NULL);
 	struct tm* print_time = gmtime(&timestamp);
-	
-	// Ottiene posizione dei device sulla scacchiera
 	int2 positions[DEV_COUNT];
+
+#if 0
+	for (int i = 0; i < DEV_COUNT; ++i)
+		positions[i].x = -1,
+		positions[i].y = -1;
+#endif
+
+	// Ottiene posizione dei device sulla scacchiera
 	mutex_lock(checkboard_sem);
 	for(int dev = 0; dev < DEV_COUNT; ++dev) 
 	{
 		int found = 0;
 		for(int y = 0; y < CHECKBOARD_SIDE && !found; ++y)
-			for(int x = 0; x <CHECKBOARD_SIDE && !found; ++x)
+			for(int x = 0; x < CHECKBOARD_SIDE && !found; ++x)
 				if (checkboard_shmem[x + y * CHECKBOARD_SIDE] == devices_pid[dev]) {
 					positions[dev].x = x;
 					positions[dev].y = y;
@@ -114,16 +126,25 @@ void server_callback_move(int sigalrm)
 	}
 	mutex_unlock(checkboard_sem);
 
+#if 0
+	for(int i = 0; i < DEV_COUNT; ++i)
+		if (positions[i].x == -1 || positions[i].y == -1) {
+			log_erro("Errore lettura posizione devices");
+			i = DEV_COUNT;
+		}
+#endif
+
 	//PRINT
 	static int step = 0;
 
-	printf("\n# Step %d: device positions ########################\n", step);
+	printf("\n### Step %d: Device positions ########################## \n\n", step);
 	mutex_lock(ack_list_sem);
 	for (int dev = 0; dev < DEV_COUNT; ++dev){
-		printf("DEVICE %d - %d", dev + 1, devices_pid[dev]);
-		printf(" (%d , %d): ", positions[dev].x, positions[dev].y);
+		printf("DEVICE[%d] - " COLOR_DEVICE_PID "%d" COLOR_RESET, dev + 1, devices_pid[dev]);
+		printf(" - (" COLOR_DEVICE_POS "%2d" COLOR_RESET "," COLOR_DEVICE_POS "%2d" COLOR_RESET ")", 
+			positions[dev].x, positions[dev].y);
 		
-		printf(" msgs: ");
+		printf(" - msgs: " COLOR_DEVICE_MSGS);
 		int found = 0;
 		for(int msg = 0; msg < ACK_LIST_MAX_COUNT && found != 5; ++msg)
 			if (ack_list_shmen[msg].message_id != 0 && ack_list_shmen[msg].pid_receiver == devices_pid[dev]) {
@@ -140,13 +161,12 @@ void server_callback_move(int sigalrm)
 					printf(" %d ", ack_list_shmen[msg].message_id);
 				found += 1;
 			}
-		putchar('\n');
+		printf(COLOR_RESET "\n");
 	}
 	mutex_unlock(ack_list_sem);
 
 	step += 1;
-	printf("######################################################\n");
-	printf("pid server: %d\n", getpid());
+	printf("\n########################################### (Server: %-5d)\n", getpid());
 
 #if 0
 	printf("\n ----- DEVICES ----------------------- %02d:%02d:%02d  \n",
