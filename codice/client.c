@@ -12,6 +12,7 @@
 #include <time.h>
 #include <sys/stat.h>
 #include <string.h>
+#include <unistd.h>
 
 ack_msg_t wait_message(int msg_queue_id, pid_t pid)
 {
@@ -44,10 +45,43 @@ int main(int argc, char * argv[])
 		scanf("%d%*c", &message.pid_receiver);
 	} while(message.pid_receiver <= 0);
 
+	// Controlla storico messages ids
+	log_info("Apertura file storico");
+	int history_file_fd = open(HISTORY_FILENAME, O_RDWR | O_APPEND, 0);
+	if (history_file_fd == -1)
+		panic("Errore apertura file storico, probabilmente il server non è attivo");
+
+	int valid = 1;
 	do {
+		valid = 1;
+
 		printf("Inserire message id: ");
 		scanf("%d%*c", &message.message_id);
-	} while (message.message_id <= 0);
+
+		// Controlla se il message id è unico
+		size_t read_bytes = 1;
+		do {
+			int used_msg_id = 0;
+			read_bytes = read(history_file_fd, &used_msg_id, sizeof(used_msg_id));
+			if (read_bytes == -1)
+				panic("Errore lettura storico");
+			
+			// Messaggio già presente
+			if (read_bytes != 0 && used_msg_id == message.message_id) {
+				log_info("Messaggio ids già usato: %d", used_msg_id);
+				valid = 0;
+			}
+		} while (read_bytes != 0 && valid);
+
+	} while (message.message_id <= 0 || !valid);
+
+	log_info("Scrittura nuovo message id nello storico");
+	if (write(history_file_fd, &message.message_id, sizeof(int)) == -1)
+		panic("Errore scrittura file storico");
+
+	log_info("Chiusura file storico");
+	if (close(history_file_fd) == -1)
+		panic("Errore chiusura file storico");
 
 	printf("Inserisci messaggio: ");
 	gets(message.message);

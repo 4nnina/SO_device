@@ -90,6 +90,10 @@ void server_callback_sigterm(int sigterm) {
 	if (close(position_file_fd) == -1)
 		panic("Errore chiusura file posizioni");
 
+	log_info("Eliminazione file storico");
+	if (unlink(HISTORY_FILENAME) == -1)
+		panic("Errore eliminazione file storico");
+
 	log_warn("Terminazione server");
 	exit(0);
 }
@@ -216,12 +220,22 @@ int main(int argc, char* argv[])
 		panic("Errore creazione signal handlers");
 
 	// Aprire file posizioni
+
 	char* position_file_path = argv[2];
 	log_info("Apertura file posizioni '%s'", position_file_path);
 	position_file_fd = open(position_file_path, O_RDONLY, S_IRUSR);
 	if (position_file_fd == -1)
 		panic("Errore apertura file posizioni");
 
+	// Creare file memoria per i message id
+
+	log_info("Creazione file storico message ids: '%s'", HISTORY_FILENAME);
+	int history_file_fd = open(HISTORY_FILENAME, O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
+	if (history_file_fd != -1)
+		close(history_file_fd);
+	else
+		panic("Errore creazione file storico");
+	
 	// Crea memorie condivise
 
 	log_info("Creazione e attach della memoria condivisa per la scacchiera");
