@@ -20,7 +20,7 @@
 #include "device.h"
 #include "ack_manager.h"
 
-// Colori output
+// Colori output 
 #define COLOR_RESET		  "\e[m"
 #define COLOR_DEVICE_PID  "\e[38;5;118m" // Verde
 #define COLOR_DEVICE_POS  "\e[38;5;190m" // Giallo 
@@ -32,7 +32,7 @@ extern int errno;
 // Dati globali del server
 
 static pid_t devices_pid[DEV_COUNT];
-static int   devices_fifo_fd[DEV_COUNT];
+//static int   devices_fifo_fd[DEV_COUNT];
 
 static int ack_manager_pid;
 
@@ -51,14 +51,8 @@ static ack_t* ack_list_shmen;
 // Uccide tutto
 void server_callback_sigterm(int sigterm) {
 
-	log_info("Invio sengnale di terminazione ai devices");
 	for (int child = 0; child < DEV_COUNT; ++child) {
-
-		// Chiude fifo in lettura del device
-		if (devices_fifo_fd[child] != 0 && close(devices_fifo_fd[child]) == -1) {
-			panic("Errore chiusura fifo device extra scrittura");
-		}
-		
+		log_info("Invio segnale di terminazione al figlio n. %d a %d", child, devices_pid[child]);
 		kill(devices_pid[child], SIGTERM);
 	}
 
@@ -317,6 +311,7 @@ int main(int argc, char* argv[])
 			} break;
 		}
 
+#if 0
 		char child_fifo_filename[128];
 		sprintf(child_fifo_filename, "/tmp/dev_fifo.%d", child_pid);
 
@@ -325,6 +320,7 @@ int main(int argc, char* argv[])
 		// la fifo...
 		log_info("Attesa apertura fifo '%s' in scrittura", child_fifo_filename);
 		while((devices_fifo_fd[child] = open(child_fifo_filename, O_WRONLY)) == -1);
+#endif
 	}
 
 	printf("\n ----- INFO ------------------------------------\n");

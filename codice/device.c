@@ -13,8 +13,9 @@
 
 // Dati globali dei devices
 static char device_filename[128];
-static int  device_fifo_read_fd;
 
+static int fifo_read_fd;
+static int fifo_write_fd;
 
 message_t* get_new_message(message_t* messages) {
 	for(int i = 0; i < DEV_MSG_COUNT; ++i)
@@ -40,8 +41,12 @@ int can_get_message(message_t* messages) {
 void device_callback_sigterm(int sigterm) {
 
 	log_info("Chiusura fifo in lettura");
-	if (close(device_fifo_read_fd) == -1)
-		panic("Errore chiusura fifo device lettura");
+	if (close(fifo_read_fd) == -1)
+		panic("Errore chiusura fifo");
+
+	log_info("Chiusura fifo (extra) in scrittura");
+	if (fifo_write_fd != 0 && close(fifo_write_fd) == -1)
+		panic("Errore chiusura fifo");
 
 	log_info("Eliminazione fifo");
 	unlink(device_filename);
@@ -103,13 +108,18 @@ int device(int number, device_data_t data)
 	create_fifo(device_filename);
 	
 	log_info("Apertura fifo %s in lettura", device_filename);
-	device_fifo_read_fd = open(device_filename, O_RDONLY);
-	if (device_fifo_read_fd == -1)
+	fifo_read_fd = open(device_filename, O_RDONLY | O_NONBLOCK);
+	if (fifo_read_fd == -1)
 		panic("Errore apertura fifo '%s' in lettura", device_filename);
 	
+	log_info("Apertura fifo (extra) %s in scrittura per mantenerla valida", device_filename);
+	fifo_write_fd = open(device_filename, O_WRONLY | O_NONBLOCK);
+	if (fifo_write_fd == -1)
+		panic("Errore apertura fifo '%s' in scrittura", device_filename);
+
 	// Rendi non bloccante
-	int flags = fcntl(device_fifo_read_fd, F_GETFL, 0);
-	fcntl(device_fifo_read_fd, F_SETFL, flags | O_NONBLOCK);
+	int flags = fcntl(fifo_read_fd, F_GETFL, 0);
+	fcntl(fifo_read_fd, F_SETFL, flags | O_NONBLOCK);
 
 	// Attach checkboard e ack list
 	log_info("Collegamento memoria condivisa del server");
@@ -233,7 +243,7 @@ int device(int number, device_data_t data)
 		message_t tmp_message;
 		while (valid && can_get_message(messages_queue) /* && ack_list ha spazio! */)
 		{
-			size_t bytes_read = read(device_fifo_read_fd, &tmp_message, sizeof(tmp_message));
+			size_t bytes_read = read(fifo_read_fd, &tmp_message, sizeof(tmp_message));
 			switch (bytes_read)
 			{
 				// Messaggio valido
