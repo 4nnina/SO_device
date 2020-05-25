@@ -92,6 +92,28 @@ void server_callback_sigterm(int sigterm) {
 	exit(0);
 }
 
+void print_messages_by_device(ack_t* ack_list, pid_t device_pid)
+{
+	int found = 0;
+	for(int msg = 0; msg < ACK_LIST_MAX_COUNT && found != 5; ++msg)
+		if (ack_list_shmen[msg].message_id != 0 && ack_list_shmen[msg].pid_receiver == device_pid) 
+		{
+			//stampare solo messaggi attualmente nel device
+			time_t time = ack_list_shmen[msg].timestamp;
+			int id = ack_list_shmen[msg].message_id;
+
+			int stampa = 1;
+			for (int last_msg = 0; last_msg < ACK_LIST_MAX_COUNT; ++last_msg)
+				if	(ack_list_shmen[last_msg].message_id == id && time < ack_list_shmen[last_msg].timestamp)
+						stampa = 0;
+				
+			if(stampa)
+				printf(" %d ", ack_list_shmen[msg].message_id);
+
+			found += 1;
+		}
+}
+
 typedef struct int2 {
 	int x, y;
 } int2;
@@ -99,15 +121,7 @@ typedef struct int2 {
 // Avvia il movimento dei device (2s) e printa
 void server_callback_move(int sigalrm) 
 {
-	time_t timestamp = time(NULL);
-	struct tm* print_time = gmtime(&timestamp);
 	int2 positions[DEV_COUNT];
-
-#if 0
-	for (int i = 0; i < DEV_COUNT; ++i)
-		positions[i].x = -1,
-		positions[i].y = -1;
-#endif
 
 	// Ottiene posizione dei device sulla scacchiera
 	mutex_lock(checkboard_sem);
@@ -124,41 +138,20 @@ void server_callback_move(int sigalrm)
 	}
 	mutex_unlock(checkboard_sem);
 
-#if 0
-	for(int i = 0; i < DEV_COUNT; ++i)
-		if (positions[i].x == -1 || positions[i].y == -1) {
-			log_erro("Errore lettura posizione devices");
-			i = DEV_COUNT;
-		}
-#endif
-
-	//PRINT
 	static int step = 0;
-
 	printf("\n### Step %d: Device positions ########################## \n\n", step);
+
 	mutex_lock(ack_list_sem);
-	for (int dev = 0; dev < DEV_COUNT; ++dev){
+	for (int dev = 0; dev < DEV_COUNT; ++dev) 
+	{
+		// Header
 		printf("DEVICE[%d] - " COLOR_DEVICE_PID "%d" COLOR_RESET, dev + 1, devices_pid[dev]);
 		printf(" - (" COLOR_DEVICE_POS "%2d" COLOR_RESET "," COLOR_DEVICE_POS "%2d" COLOR_RESET ")", 
 			positions[dev].x, positions[dev].y);
 		
+		// Messaggi
 		printf(" - msgs: " COLOR_DEVICE_MSGS);
-		int found = 0;
-		for(int msg = 0; msg < ACK_LIST_MAX_COUNT && found != 5; ++msg)
-			if (ack_list_shmen[msg].message_id != 0 && ack_list_shmen[msg].pid_receiver == devices_pid[dev]) {
-				//stampare solo messaggi attualmente nel device
-				int time = ack_list_shmen[msg].timestamp;
-				int id = ack_list_shmen[msg].message_id;
-				int stampa = 1;
-				for (int last_msg = 0; last_msg < ACK_LIST_MAX_COUNT; ++last_msg)
-				{
-					if	(ack_list_shmen[last_msg].message_id ==  id	&& time < ack_list_shmen[last_msg].timestamp)
-							stampa = 0;
-				}
-				if(stampa) //superfluo se voglio tutti i messaggi
-					printf(" %d ", ack_list_shmen[msg].message_id);
-				found += 1;
-			}
+		print_messages_by_device(ack_list_shmen, devices_pid[dev]);
 		printf(COLOR_RESET "\n");
 	}
 	mutex_unlock(ack_list_sem);
