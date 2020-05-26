@@ -104,7 +104,9 @@ int main(int argc, char * argv[])
 	if (bytes == -1)
 		panic("Errore scrittura messaggio");
 
-	close(dev_fifo_fd);
+	log_info("Chiusura fifo");
+	if(close(dev_fifo_fd) == -1)
+		panic("Errore chiusura fifo");
 
 	// Aspetta messaggio
 	key_t msg_queue_key = atoi(argv[1]);
@@ -148,8 +150,8 @@ int main(int argc, char * argv[])
 		if(write(output_file_fd, buffer, strlen(buffer)) == -1 ) 
 			panic("Errore scrittura in file di testo ack");
 	}
-	
-	close(output_file_fd);
+	if(close(output_file_fd) == -1)
+		panic("Errore chiusura file");
 	log_info("Completato");
     return 0;
 }

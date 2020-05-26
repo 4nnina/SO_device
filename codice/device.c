@@ -49,7 +49,8 @@ void device_callback_sigterm(int sigterm) {
 		panic("Errore chiusura fifo");
 
 	log_info("Eliminazione fifo");
-	unlink(device_filename);
+	if(unlink(device_filename))
+		panic("Errore unlik fifo");
 	
 	log_warn("Terminazione device");
 	exit(0);
@@ -119,7 +120,10 @@ int device(int number, device_data_t data)
 
 	// Rendi non bloccante
 	int flags = fcntl(fifo_read_fd, F_GETFL, 0);
-	fcntl(fifo_read_fd, F_SETFL, flags | O_NONBLOCK);
+	if(flags == -1)
+		panic("Errore falg read non bloccante")
+	if(fcntl(fifo_read_fd, F_SETFL, flags | O_NONBLOCK) == -1)
+		panic("Errore settaggio falg non bloccanti");
 
 	// Attach checkboard e ack list
 	log_info("Collegamento memoria condivisa del server");

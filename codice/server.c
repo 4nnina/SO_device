@@ -74,8 +74,14 @@ void server_callback_sigterm(int sigterm) {
 	log_info("Chiusura mutex ack list");
 	semaphore_remove(ack_list_sem);
 
+	log_info("Unlink memoria condivisa scacchiera");
+	shared_memory_detach(checkboard_shmem);
+
 	log_info("Eliminazione memoria condivisa scacchiera");
 	shared_memory_remove(checkboard_shmem_id);
+
+	log_info("Unlink memoria condivisa ack list");
+	shared_memory_detach(ack_list_shmen);
 
 	log_info("Eliminazione memoria condivisa ack list");
 	shared_memory_remove(ack_list_shmem_id);
